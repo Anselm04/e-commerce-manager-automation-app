@@ -2015,3 +2015,34 @@ schedule.scheduleJob('0 8 * * *', async () => {
     }
   }
 });
+MASTER_HASH=$2b$10$5c47vF3KHyDPSnXZhNziL..b6XOblPgq3xeWvcZB15RAcAGj9OkRq
+const Stripe = require('stripe');
+const bcrypt = require('bcrypt');
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+const plans = {
+  pro: 'price_123abc',     // Replace with your real Stripe price ID
+  elite: 'price_456def'
+};
+
+async function requireSubscription(ctx, next) {
+  const submittedCode = ctx.headers['x-master-code'] || ctx.cookies.get('master');
+  const isValid = submittedCode 
+    ? await bcrypt.compare(submittedCode, process.env.MASTER_HASH)
+    : false;
+
+  if (isValid) {
+    console.log("🟢 Master Access Granted");
+    return next(); // skip billing checks
+  }
+
+  const tier = ctx.session.tier;
+  if (tier === 'free') return next();
+
+  const subscription = await stripe.subscriptions.retrieve(ctx.session.subId);
+  if (subscription.status !== 'active') ctx.throw(402, 'Payment Required');
+
+  return next();
+}
+
+module.exports = { stripe, plans, requireSubscription };
