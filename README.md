@@ -1523,3 +1523,181 @@ npm install axios dotenv node-schedule
 SHOPIFY_STORE_URL=yourstore.myshopify.com
 SHOPIFY_ADMIN_TOKEN=your_shopify_admin_token
 node full-auto-scheduler.js
+const axios = require('axios');
+
+// CJ Dropshipping pull (mocked structure for demo)
+async function pullCJProducts() {
+  const cjProducts = await axios.get('https://mock.cjdropshipping.api/products');
+  return cjProducts.data.map(p => ({
+    title: p.name,
+    description: p.description,
+    image: p.image_url,
+    price: p.price,
+    supplier: 'CJ',
+    sku: p.sku
+  }));
+}
+
+// Future Supplier Integration Example
+async function pullOtherSupplierProducts() {
+  const otherProducts = []; // Replace with real API logic
+  return otherProducts.map(p => ({
+    title: p.title,
+    description: p.desc,
+    image: p.image,
+    price: p.price,
+    supplier: 'AliExpress',
+    sku: p.sku
+  }));
+}
+
+async function getAllSupplierProducts() {
+  const cj = await pullCJProducts();
+  const others = await pullOtherSupplierProducts();
+  return [...cj, ...others];
+}
+
+module.exports = { getAllSupplierProducts };
+function categorizeProduct(product) {
+  const title = product.title.toLowerCase();
+  const description = product.description.toLowerCase();
+
+  if (title.includes("earbuds") || description.includes("bluetooth")) return "Electronics > Audio";
+  if (title.includes("lamp") || description.includes("light")) return "Home & Living > Lighting";
+  if (title.includes("toy") || description.includes("child")) return "Kids & Toys";
+  if (title.includes("shirt") || title.includes("hoodie")) return "Fashion > Apparel";
+  if (title.includes("necklace") || title.includes("jewelry")) return "Accessories > Jewelry";
+
+  return "General > Misc";
+}
+
+module.exports = { categorizeProduct };
+const axios = require('axios');
+
+const SHOPIFY_URL = process.env.SHOPIFY_STORE_URL;
+const SHOPIFY_TOKEN = process.env.SHOPIFY_ADMIN_TOKEN;
+
+async function ensureCollection(categoryName) {
+  const url = `https://${SHOPIFY_URL}/admin/api/2023-07/custom_collections.json`;
+
+  const existing = await axios.get(url, {
+    headers: { "X-Shopify-Access-Token": SHOPIFY_TOKEN }
+  });
+
+  const found = existing.data.custom_collections.find(c => c.title === categoryName);
+  if (found) return found.id;
+
+  const created = await axios.post(url, {
+    custom_collection: { title: categoryName }
+  }, {
+    headers: { "X-Shopify-Access-Token": SHOPIFY_TOKEN }
+  });
+
+  return created.data.custom_collection.id;
+}
+
+async function uploadToShopify(product, category) {
+  const collectionId = await ensureCollection(category);
+
+  const url = `https://${SHOPIFY_URL}/admin/api/2023-07/products.json`;
+  const response = await axios.post(url, {
+    product: {
+      title: product.title,
+      body_html: product.description,
+      vendor: product.supplier,
+      tags: [category],
+      images: [{ src: product.image }],
+      variants: [{
+        price: product.price,
+        sku: product.sku
+      }]
+    }
+  }, {
+    headers: { "X-Shopify-Access-Token": SHOPIFY_TOKEN }
+  });
+
+  return response.data.product;
+}
+
+module.exports = { uploadToShopify };
+function generateTags(description) {
+  const words = description.toLowerCase().match(/\\b[a-z]{4,}\\b/g) || [];
+  const freq = {};
+  for (const word of words) {
+    freq[word] = (freq[word] || 0) + 1;
+  }
+  const tags = Object.keys(freq).sort((a, b) => freq[b] - freq[a]).slice(0, 10);
+  return [...new Set(tags)];
+}
+
+module.exports = { generateTags };
+const { getAllSupplierProducts } = require('./supplier-pull');
+const { categorizeProduct } = require('./auto-categorizer');
+const { uploadToShopify } = require('./shopify-uploader');
+const { generateTags } = require('./tag-normalizer');
+
+(async () => {
+  console.log("🚀 Starting full supplier-to-Shopify automation");
+
+  const products = await getAllSupplierProducts();
+
+  for (const product of products) {
+    const category = categorizeProduct(product);
+    const tags = generateTags(product.description);
+    product.description += `<br><br><b>Tags:</b> ${tags.join(', ')}`;
+    await uploadToShopify(product, category);
+    console.log(`✅ Uploaded: ${product.title} to ${category}`);
+  }
+
+  console.log("🎯 All products imported and categorized.");
+})();
+npm install axios dotenv
+SHOPIFY_STORE_URL=your-store.myshopify.com
+SHOPIFY_ADMIN_TOKEN=your-admin-access-token
+const { Configuration, OpenAIApi } = require("openai");
+
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY
+});
+const openai = new OpenAIApi(configuration);
+
+async function generateSEOKeywords(product) {
+  const prompt = `
+  Write a list of 15 high-conversion SEO and AEO keywords and long-tail phrases for this product:
+
+  Product Title: ${product.title}
+  Product Description: ${product.description}
+  
+  The keywords must:
+  - Be specific to the product
+  - Be phrased like search engine or voice queries
+  - Be optimized for TikTok, Google, Perplexity, YouTube, and ChatGPT-based shopping assistants
+
+  Return them as a clean, comma-separated list only.
+  `;
+
+  const completion = await openai.createChatCompletion({
+    model: "gpt-4",
+    messages: [{ role: "user", content: prompt }],
+    max_tokens: 150
+  });
+
+  const keywords = completion.data.choices[0].message.content.trim();
+  return keywords.split(",").map(k => k.trim());
+}
+
+module.exports = { generateSEOKeywords };
+const { generateSEOKeywords } = require('./agent-seo');
+
+// Inside your main for-loop:
+for (const product of products) {
+  const category = categorizeProduct(product);
+  const aiTags = await generateSEOKeywords(product);
+  const seoText = `<br><br><b>Search Terms:</b> ${aiTags.join(', ')}`;
+  product.description += seoText;
+
+  product.tags = aiTags; // Optional: include in Shopify tags
+  await uploadToShopify(product, category);
+  console.log(`✅ Uploaded: ${product.title} to ${category} with SEO/AEO`);
+}
+OPENAI_API_KEY=sk-...
