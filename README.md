@@ -723,3 +723,95 @@ async function processOrder(order) {
 
   console.log(`Order ${order.id}: Total supplier cost $${totalCJCost}, profit $${profit}`);
 }
+const axios = require('axios');
+const shopify = require('./lib/shopifyAPI'); // wrapper for Shopify API
+const categorizeProduct = require('./lib/categorizer'); // AI-based categorizer
+const suppliers = require('./lib/suppliers'); // modular importers
+
+async function importAllSupplierCatalogs() {
+  for (const supplier of suppliers.list) {
+    console.log(`[Jarvis] Pulling catalog from ${supplier.name}...`);
+    const products = await supplier.fetchCatalog();
+
+    for (const product of products) {
+      // Step 1: Categorize
+      const { category, subcategory, tags } = categorizeProduct(product);
+
+      // Step 2: Prepare Shopify product payload
+      const shopifyProduct = {
+        title: product.name,
+        body_html: product.description,
+        vendor: supplier.name,
+        product_type: category,
+        tags: [...tags, subcategory],
+        variants: [
+          {
+            price: (product.cost * 1.5).toFixed(2),
+            sku: product.sku,
+            inventory_quantity: product.stock,
+            inventory_management: "shopify"
+          }
+        ],
+        images: product.images.map(img => ({ src: img }))
+      };
+
+      // Step 3: Upload to Shopify
+      try {
+        await shopify.createProduct(shopifyProduct);
+        console.log(`[Jarvis] Uploaded ${product.name}`);
+      } catch (err) {
+        console.error(`[ERROR] Failed to upload product ${product.name}:`, err.message);
+      }
+    }
+  }
+}
+module.exports = function categorizeProduct(product) {
+  const title = product.name.toLowerCase();
+
+  if (title.includes("hoodie") || title.includes("sweater")) {
+    return { category: "Apparel", subcategory: "Hoodies", tags: ["fashion", "winter"] };
+  }
+  if (title.includes("mug") || title.includes("cup")) {
+    return { category: "Home & Kitchen", subcategory: "Drinkware", tags: ["kitchen", "coffee"] };
+  }
+
+  return { category: "Miscellaneous", subcategory: "Other", tags: ["general"] };
+};
+const cj = require('./suppliers/cj');
+const zendrop = require('./suppliers/zendrop');
+const spocket = require('./suppliers/spocket');
+
+module.exports.list = [cj, zendrop, spocket];
+const axios = require('axios');
+
+module.exports.name = "CJdropshipping";
+
+module.exports.fetchCatalog = async function () {
+  const response = await axios.get("https://api.cjdropshipping.com/products", {
+    headers: {
+      "Authorization": `Bearer ${process.env.CJ_API_KEY}`
+    }
+  });
+  return response.data.products.map(p => ({
+    name: p.title,
+    description: p.description,
+    sku: p.sku,
+    cost: p.cost,
+    stock: p.stock,
+    images: p.images
+  }));
+};
+const axios = require('axios');
+
+module.exports.createProduct = async function (product) {
+  const response = await axios.post(
+    `https://${process.env.SHOPIFY_STORE}/admin/api/2023-01/products.json`,
+    { product },
+    {
+      headers: {
+        "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN
+      }
+    }
+  );
+  return response.data.product;
+};
