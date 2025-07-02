@@ -2372,3 +2372,106 @@ if (document.cookie.includes("master=")) {
   document.getElementById("admin-badge").style.display = "block";
 }
 </script>
+const axios = require('axios');
+const OpenAI = require('openai');
+const shopifyAPI = require('shopify-api-node');
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const shopify = new shopifyAPI({
+  shopName: process.env.SHOPIFY_SHOP_NAME,
+  apiKey: process.env.SHOPIFY_API_KEY,
+  password: process.env.SHOPIFY_API_PASSWORD,
+});
+
+async function fetchCJProducts() {
+  const { data } = await axios.get('https://developers.cjdropshipping.com/api/product/list', {
+    headers: { 'CJ-Access-Token': process.env.CJ_API_KEY }
+  });
+  return data.products || [];
+}
+
+async function categorizeProduct(title, description) {
+  const prompt = `Categorize the following product and return JSON like {category: "", subcategory: "", tags: []}. Title: ${title}, Description: ${description}`;
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4",
+    messages: [{ role: "user", content: prompt }]
+  });
+  return JSON.parse(completion.choices[0].message.content);
+}
+
+async function syncProducts() {
+  const products = await fetchCJProducts();
+
+  for (const product of products) {
+    const aiData = await categorizeProduct(product.name, product.description);
+
+    await shopify.product.create({
+      title: product.name,
+      body_html: product.description,
+      product_type: aiData.category,
+      tags: aiData.tags.join(', '),
+      variants: [
+        {
+          price: product.price,
+          sku: product.sku,
+          inventory_quantity: 999
+        }
+      ],
+      images: product.images.map(img => ({ src: img }))
+    });
+
+    console.log(`✅ Synced: ${product.name}`);
+  }
+}
+
+module.exports = { syncProducts };
+const OpenAI = require('openai');
+const { GraphAPI, TikTokAPI, PinterestAPI } = require('./platformClients'); // You build wrappers
+const scheduler = require('node-cron');
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+async function generateSocialPost(product) {
+  const prompt = `Create a viral social media post with SEO and AEO keywords for this product: "${product.title}" - Description: ${product.body_html}. Return JSON with {caption, hashtags, languages: [translations...]}`;
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4",
+    messages: [{ role: "user", content: prompt }]
+  });
+  return JSON.parse(completion.choices[0].message.content);
+}
+
+async function fetchProducts() {
+  // Fetch 3 random published Shopify products
+  const products = await axios.get(`https://${process.env.SHOPIFY_SHOP_NAME}.myshopify.com/admin/api/2023-10/products.json`, {
+    headers: {
+      "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN
+    }
+  });
+  return products.data.products.sort(() => 0.5 - Math.random()).slice(0, 3);
+}
+
+async function postToAllPlatforms() {
+  const products = await fetchProducts();
+
+  for (const product of products) {
+    const content = await generateSocialPost(product);
+
+    await Promise.all([
+      GraphAPI.postToFacebook(content.caption, product.image.src),
+      GraphAPI.postToInstagram(content.caption, product.image.src),
+      TikTokAPI.uploadVideo(product.video_url, content.caption),
+      PinterestAPI.createPin(product.image.src, content.caption),
+      // Extend to Reddit, Threads, Discord, X, YouTube Shorts, LinkedIn...
+    ]);
+
+    console.log(`🚀 Posted for: ${product.title}`);
+  }
+}
+
+scheduler.schedule('*/144 */1 * * *', postToAllPlatforms); // 10x a day
+OPENAI_API_KEY=your_openai_key_here
+CJ_API_KEY=your_cj_token_here
+SHOPIFY_ADMIN_TOKEN=your_private_admin_token
+SHOPIFY_SHOP_NAME=shopatonestop
+SHOPIFY_API_KEY=your_public_key
+SHOPIFY_API_PASSWORD=your_private_app_password
