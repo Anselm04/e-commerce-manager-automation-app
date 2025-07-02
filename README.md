@@ -3370,3 +3370,61 @@ await db.query(
   'INSERT INTO admin_logs (email, action) VALUES ($1, $2)',
   [ctx.session.email, 'Suspended user X']
 );
+router.get('/admin/analytics', requireRole('admin'), async (ctx) => {
+  const [activeSubs, totalSubs, revenue, cancels, invoices] = await Promise.all([
+    db.query(`SELECT COUNT(*) FROM stripe_subs WHERE status = 'active'`),
+    db.query(`SELECT COUNT(*) FROM users WHERE role != 'viewer'`),
+    db.query(`SELECT SUM(amount) FROM stripe_subs WHERE status = 'active'`),
+    db.query(`SELECT COUNT(*) FROM stripe_events WHERE type = 'customer.subscription.deleted' AND created_at > now() - interval '30 days'`),
+    db.query(`SELECT user_email, SUM(amount) as total, MAX(created_at) as latest FROM stripe_invoices GROUP BY user_email`)
+  ]);
+
+  const churnRate = (parseInt(cancels.rows[0].count) / parseInt(activeSubs.rows[0].count)) * 100 || 0;
+  const avgLTV = invoices.rows.reduce((acc, u) => acc + parseFloat(u.total), 0) / invoices.rows.length || 0;
+
+  ctx.body = {
+    totalSubscribers: totalSubs.rows[0].count,
+    activeSubscriptions: activeSubs.rows[0].count,
+    monthlyRevenue: parseFloat(revenue.rows[0].sum || 0),
+    churnRate: churnRate.toFixed(2),
+    avgLTV: avgLTV.toFixed(2)
+  };
+});
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+
+function AnalyticsModule() {
+  const [metrics, setMetrics] = useState(null);
+
+  useEffect(() => {
+    axios.get('/admin/analytics', {
+      headers: { 'x-master-key': process.env.REACT_APP_ADMIN_KEY }
+    }).then(res => setMetrics(res.data));
+  }, []);
+
+  if (!metrics) return <p>Loading...</p>;
+
+  return (
+    <div className="p-6 bg-white rounded shadow mt-8">
+      <h2 className="text-xl font-bold mb-4">📊 SubCom: Subscription Command</h2>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+        <MetricCard label="Total Subscribers" value={metrics.totalSubscribers} color="blue" />
+        <MetricCard label="Active Subscriptions" value={metrics.activeSubscriptions} color="green" />
+        <MetricCard label="Monthly Revenue (USD)" value={`$${metrics.monthlyRevenue}`} color="indigo" />
+        <MetricCard label="30-Day Churn Rate" value={`${metrics.churnRate}%`} color="red" />
+        <MetricCard label="Avg Lifetime Value (LTV)" value={`$${metrics.avgLTV}`} color="purple" />
+      </div>
+    </div>
+  );
+}
+
+function MetricCard({ label, value, color }) {
+  return (
+    <div className={`bg-${color}-100 text-${color}-900 p-4 rounded shadow-sm`}>
+      <p className="text-sm uppercase">{label}</p>
+      <h3 className="text-2xl font-bold">{value}</h3>
+    </div>
+  );
+}
+
+export default AnalyticsModule;
