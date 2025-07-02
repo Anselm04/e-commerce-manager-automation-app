@@ -1427,3 +1427,99 @@ function scheduleJarvisSwarm() {
 
 scheduleJarvisSwarm();
 node jarvis-unified-swarm-scheduler.js
+const axios = require('axios');
+
+async function getShopifyProducts() {
+  const storeUrl = process.env.SHOPIFY_STORE_URL;
+  const accessToken = process.env.SHOPIFY_ADMIN_TOKEN;
+
+  const response = await axios.get(`https://${storeUrl}/admin/api/2023-07/products.json`, {
+    headers: {
+      "X-Shopify-Access-Token": accessToken
+    }
+  });
+
+  return response.data.products.map(product => ({
+    title: product.title,
+    description: product.body_html.replace(/<[^>]*>?/gm, ''),
+    image: product.images[0]?.src || '',
+    id: product.id
+  }));
+}
+
+module.exports = { getShopifyProducts };
+// CJ Dropshipping mock video retriever
+// Replace with their API once available
+
+async function getCJVideoForProduct(product) {
+  const slug = product.title.toLowerCase().replace(/\\s+/g, '-');
+  return {
+    video_url: `https://video.cjdropshipping.com/assets/${slug}.mp4`
+  };
+}
+
+module.exports = { getCJVideoForProduct };
+const { generateSmartCaption } = require('./agent-captions');
+const { translatePost } = require('./agent-translate');
+const {
+  postToFacebook,
+  postToInstagram,
+  postToThreads,
+  postToTikTok,
+  postToYouTube,
+  postToLinkedIn,
+  postToReddit,
+  postToPinterest,
+  postToDiscord
+} = require('./agent-posting-modules');
+
+async function postMultilingual(product, video_url) {
+  const caption = await generateSmartCaption(product);
+
+  const languages = ['en', 'es', 'fr', 'de', 'zh']; // You can expand this list
+  const translations = await Promise.all(
+    languages.map(lang => translatePost(caption, lang))
+  );
+
+  for (const text of translations) {
+    await Promise.all([
+      postToFacebook(text, product.image),
+      postToInstagram(product.image, text),
+      postToThreads(text, product.image),
+      postToTikTok(video_url, text),
+      postToYouTube(video_url, product.title, text),
+      postToLinkedIn(text, product.image),
+      postToReddit(product.title, product.image),
+      postToPinterest(product.title, product.image, "https://yourstore.com/products/" + product.id),
+      postToDiscord(text, product.image)
+    ]);
+  }
+}
+
+module.exports = { postMultilingual };
+const { getShopifyProducts } = require('./shopify-products');
+const { getCJVideoForProduct } = require('./cj-videos');
+const { postMultilingual } = require('./multilingual-loop');
+const schedule = require('node-schedule');
+
+function scheduleFullAutomation() {
+  schedule.scheduleJob('0 6 * * *', async () => {
+    console.log("[⏰ Jarvis Full Auto Scheduler Triggered]");
+    const products = await getShopifyProducts();
+
+    for (const product of products.slice(0, 3)) {
+      const video = await getCJVideoForProduct(product);
+      await postMultilingual(product, video.video_url);
+    }
+
+    console.log("[✅ Daily Auto Posting Complete]");
+  });
+
+  console.log("[🚀 Jarvis Full Automation Deployed – Posts Daily at 6AM]");
+}
+
+scheduleFullAutomation();
+npm install axios dotenv node-schedule
+SHOPIFY_STORE_URL=yourstore.myshopify.com
+SHOPIFY_ADMIN_TOKEN=your_shopify_admin_token
+node full-auto-scheduler.js
