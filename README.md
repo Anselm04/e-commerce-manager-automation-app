@@ -1040,3 +1040,226 @@ SHOPIFY_STORE=yourstore.myshopify.com
 SHOPIFY_ADMIN_TOKEN=your-shopify-admin-token
 CJ_API_KEY=your-cj-api-token
 
+/**
+ * JARVIS AI Swarm Engine for Shopify Store Automation
+ * Includes customer AI agents + multi-platform social media poster
+ */
+
+const axios = require('axios');
+const schedule = require('node-schedule');
+require('dotenv').config();
+
+/**
+ * === AI Customer Agent (Handles Inquiries & Feedback) ===
+ */
+function handleCustomerMessage(message) {
+  const lower = message.toLowerCase();
+
+  if (lower.includes("where is my order")) return "Hi! You can track your order here: https://yourstore.com/track-order";
+  if (lower.includes("refund") || lower.includes("return")) return "Returns and refunds follow the supplier's policy. Here's the link: https://yourstore.com/refund-policy";
+  if (lower.includes("broken") || lower.includes("damaged")) return "We're sorry to hear that. Please send us a photo and we’ll help right away.";
+  return "Thanks for reaching out! One of our team will reply within 24 hours.";
+}
+
+/**
+ * === Social Media Content Generator (with SEO/AEO Keywords) ===
+ */
+function generatePost(product, platform) {
+  const keyword = product.title.toLowerCase().includes("necklace") ? "#fashion" : "#trending";
+  const seo = ["#shopify", "#onlinestore", "#viral", `#${platform.toLowerCase()}`, "#aishopify"];
+  const base = `🔥 Just dropped! ${product.title} is now available. Tap the link in bio to shop now!`;
+
+  return {
+    text: `${base} ${keyword} ${seo.join(" ")}`,
+    image: product.images[0] || "https://yourstore.com/default-image.jpg"
+  };
+}
+
+/**
+ * === Posting to Social Media Platforms (Mock Functions) ===
+ * Replace with actual API integrations like Facebook Graph, TikTok, etc.
+ */
+function postToPlatform(platform, postContent) {
+  console.log(`[📡 Posting to ${platform}]`);
+  console.log("Text:", postContent.text);
+  console.log("Image:", postContent.image);
+  // Integration with APIs would go here
+}
+
+/**
+ * === Scheduled Posting (10x Daily at Optimal Times) ===
+ */
+const platforms = ["Facebook", "Instagram", "TikTok", "YouTube", "Pinterest", "X", "LinkedIn", "Threads", "Snapchat", "Tumblr"];
+const exampleProduct = {
+  title: "Crystal Pendant Necklace",
+  images: ["https://yourstore.com/products/necklace.jpg"]
+};
+
+function scheduleAllPosts() {
+  const times = ["09:00", "10:30", "12:00", "13:30", "15:00", "16:30", "18:00", "19:30", "21:00", "22:30"];
+
+  for (let i = 0; i < 10; i++) {
+    const [hour, minute] = times[i].split(":").map(Number);
+    const platform = platforms[i % platforms.length];
+    const post = generatePost(exampleProduct, platform);
+
+    schedule.scheduleJob({ hour, minute }, () => {
+      postToPlatform(platform, post);
+    });
+  }
+
+  console.log("[✅ Jarvis Scheduler] All 10 daily posts scheduled.");
+}
+
+scheduleAllPosts();
+
+/**
+ * === Handle Incoming Customer Events (e.g. live chat, email, form) ===
+ */
+function handleCustomerEvent(inputMessage) {
+  const response = handleCustomerMessage(inputMessage);
+  console.log("[🤖 AI Agent Responds]:", response);
+}
+npm install axios node-schedule dotenv
+node your-filename.js
+const axios = require('axios');
+
+async function generateSmartCaption(product) {
+  const prompt = `Write a short, catchy, SEO-optimized social media caption to promote this product:
+Title: ${product.title}
+Category: ${product.category}
+Features: ${product.description.slice(0, 100)}...`;
+
+  const response = await axios.post(
+    "https://api.openai.com/v1/chat/completions",
+    {
+      model: "gpt-4",
+      messages: [
+        { role: "system", content: "You are a viral social media expert." },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.8,
+      max_tokens: 100
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+
+  return response.data.choices[0].message.content;
+}
+
+module.exports = { generateSmartCaption };
+const axios = require('axios');
+
+async function translatePost(text, targetLang) {
+  const response = await axios.post("https://libretranslate.de/translate", {
+    q: text,
+    source: "en",
+    target: targetLang,
+    format: "text"
+  }, {
+    headers: { "Content-Type": "application/json" }
+  });
+
+  return response.data.translatedText;
+}
+
+module.exports = { translatePost };
+const axios = require('axios');
+
+async function postToFacebook(text, image_url) {
+  const pageAccessToken = process.env.FB_PAGE_TOKEN;
+  const pageID = process.env.FB_PAGE_ID;
+
+  const response = await axios.post(
+    `https://graph.facebook.com/${pageID}/photos`,
+    {
+      url: image_url,
+      caption: text,
+      access_token: pageAccessToken
+    }
+  );
+
+  return response.data;
+}
+
+async function postToTikTok(video_url, text) {
+  console.log("[Mock] TikTok post:", video_url, "|", text);
+  return { success: true };
+}
+
+module.exports = { postToFacebook, postToTikTok };
+const axios = require('axios');
+
+async function postToInstagram(image_url, caption) {
+  const igUserId = process.env.IG_USER_ID;
+  const igAccessToken = process.env.IG_ACCESS_TOKEN;
+
+  const createRes = await axios.post(`https://graph.facebook.com/v17.0/${igUserId}/media`, {
+    image_url,
+    caption,
+    access_token: igAccessToken
+  });
+
+  const containerId = createRes.data.id;
+
+  const publishRes = await axios.post(`https://graph.facebook.com/v17.0/${igUserId}/media_publish`, {
+    creation_id: containerId,
+    access_token: igAccessToken
+  });
+
+  return publishRes.data;
+}
+
+module.exports = { postToInstagram };
+function generatePromoVideo(product, caption) {
+  console.log("[🎥] Generating AI Promo Video for:", product.title);
+  return {
+    video_url: "https://yourcdn.com/videos/generated-promo.mp4",
+    caption
+  };
+}
+
+module.exports = { generatePromoVideo };
+const express = require('express');
+const { generateSmartCaption } = require('./agent-captions');
+const { generatePromoVideo } = require('./agent-video');
+const { postToFacebook, postToTikTok } = require('./agent-posting');
+const { postToInstagram } = require('./agent-instagram');
+const { translatePost } = require('./agent-translate');
+
+const app = express();
+app.use(express.json());
+
+app.post('/webhook/product-created', async (req, res) => {
+  const product = req.body.product;
+
+  console.log("[🔔] Shopify Product Created Triggered");
+  const caption = await generateSmartCaption(product);
+  const translated = await translatePost(caption, "es");
+  const promo = generatePromoVideo(product, translated);
+
+  await postToFacebook(translated, product.image);
+  await postToInstagram(product.image, translated);
+  await postToTikTok(promo.video_url, translated);
+
+  res.status(200).send("Posted successfully");
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`[🚀 Jarvis Webhook Listening on port ${PORT}]`);
+});
+OPENAI_API_KEY=your-openai-key
+FB_PAGE_TOKEN=your-facebook-page-access-token
+FB_PAGE_ID=your-facebook-page-id
+IG_USER_ID=your-instagram-user-id
+IG_ACCESS_TOKEN=your-instagram-token
+PORT=3000
+npm install axios express dotenv
+POST https://your-domain.com/webhook/product-created
+
