@@ -2877,3 +2877,106 @@ DATABASE_URL=postgres://your-db-url
 STRIPE_SECRET_KEY=sk_live_*********
 STRIPE_PRICE_ID=price_**********
 MASTER_OVERRIDE_KEY=YOUR_MASTER_KEY
+#!/bin/bash
+
+echo "🧹 Sanitizing code: Redacting private store identifiers..."
+
+STORE_NAME="shopatonestop"
+DOMAIN_NAME="shopatonestop.store"
+
+FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(js|jsx|ts|html|env|json)$')
+
+for FILE in $FILES; do
+  if grep -q "$STORE_NAME" "$FILE"; then
+    echo "⛔ Found hardcoded store name in $FILE"
+    sed -i "s/$STORE_NAME/YOUR_SHOPIFY_STORE/g" "$FILE"
+  fi
+  if grep -q "$DOMAIN_NAME" "$FILE"; then
+    echo "⛔ Found domain in $FILE"
+    sed -i "s/$DOMAIN_NAME/YOUR_DOMAIN/g" "$FILE"
+  fi
+  git add "$FILE"
+done
+
+echo "✅ Redaction complete. Proceeding with commit."
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+
+function App() {
+  const [users, setUsers] = useState([]);
+
+  useEffect(() => {
+    axios.get('/admin/all-users', {
+      headers: { 'x-master-key': process.env.REACT_APP_ADMIN_KEY }
+    }).then(res => setUsers(res.data));
+  }, []);
+
+  return (
+    <div className="p-8 bg-gray-100 min-h-screen">
+      <h1 className="text-3xl font-bold mb-6">🚀 Admin Dashboard</h1>
+      <table className="w-full bg-white shadow rounded">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Shop</th>
+            <th>Date</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map(u => (
+            <tr key={u.id}>
+              <td>{u.email}</td>
+              <td>{u.shopify_store}</td>
+              <td>{new Date(u.created_at).toLocaleString()}</td>
+              <td><button className="bg-red-500 text-white px-2 py-1 rounded">Delete</button></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default App;
+npm run build
+# Serve with nginx or Vercel
+npm install nodemailer
+const nodemailer = require("nodemailer");
+
+const transporter = nodemailer.createTransport({
+  service: "gmail", // or SMTP of your provider
+  auth: {
+    user: process.env.NOTIFY_EMAIL,
+    pass: process.env.NOTIFY_PASS
+  }
+});
+
+function sendSignupEmail(email, store) {
+  return transporter.sendMail({
+    from: '"ShopAtOneStop Alerts" <no-reply@yourdomain.com>',
+    to: process.env.ADMIN_EMAIL,
+    subject: "🆕 New Store Connected",
+    text: `Store: ${store}\nEmail: ${email}`
+  });
+}
+
+function sendBillingFailure(email, reason) {
+  return transporter.sendMail({
+    from: '"ShopAtOneStop Billing" <billing@yourdomain.com>',
+    to: process.env.ADMIN_EMAIL,
+    subject: "⚠️ Stripe Billing Failed",
+    text: `Failure for ${email}:\n${reason}`
+  });
+}
+
+module.exports = { sendSignupEmail, sendBillingFailure };
+await stripe.customers.update(customer.id, {
+  name: "ShopAtOneStop",
+  email: email,
+  address: { country: "NZ" }
+});
+REACT_APP_ADMIN_KEY=your_master_key
+NOTIFY_EMAIL=your_notify_email@gmail.com
+NOTIFY_PASS=your_app_password
+ADMIN_EMAIL=you@yourdomain.com
