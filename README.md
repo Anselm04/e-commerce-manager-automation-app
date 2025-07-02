@@ -2617,3 +2617,74 @@ module.exports = { loadAllSuppliers };
 SPOCKET_API_KEY=your_spocket_key
 SYNCEE_API_KEY=your_syncee_key
 PRINTFUL_API_KEY=your_printful_key
+require('dotenv').config();
+const express = require('express');
+const cron = require('node-cron');
+const { syncProducts } = require('./services/productSync');
+const { generateProductFeeds } = require('./services/feedGenerator');
+const { postToAllPlatforms } = require('./services/aiSwarmPoster');
+const { detectNewShopifyProducts } = require('./services/triggerWatcher');
+const { loadAllSuppliers } = require('./services/supplierLoader');
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+app.get("/", (req, res) => {
+  res.send("✅ Shopatonestop automation engine running.");
+});
+
+// 🧠 Manual Sync Endpoint
+app.get("/sync-now", async (req, res) => {
+  await syncProducts();
+  await generateProductFeeds();
+  await postToAllPlatforms();
+  res.send("✅ Full sync + feed + post completed.");
+});
+
+// 🧬 Supplier Pull Endpoint
+app.get("/load-suppliers", async (req, res) => {
+  const all = await loadAllSuppliers();
+  res.send(`✅ Loaded ${all.length} products from external suppliers.`);
+});
+
+// 🎯 Product Watcher Trigger
+cron.schedule('*/10 * * * *', detectNewShopifyProducts); // every 10 mins
+
+// 📡 Feed Refresh
+cron.schedule('0 */6 * * *', generateProductFeeds); // every 6 hours
+
+// 🤖 Daily Swarm Post Blitz
+cron.schedule('*/144 */1 * * *', postToAllPlatforms); // 10/day
+
+app.listen(PORT, () => {
+  console.log(`🚀 Jarvis: Fully armed at http://localhost:${PORT}`);
+});
+/project-root
+│
+├── main.js
+├── .env
+├── server.js
+├── /routes
+│   ├── admin.js
+│   └── billing.js
+│
+├── /services
+│   ├── productSync.js
+│   ├── aiSwarmPoster.js
+│   ├── feedGenerator.js
+│   ├── triggerWatcher.js
+│   └── supplierLoader.js
+│
+├── /platformClients
+│   └── index.js
+│
+├── /cache
+│   └── lastProductIDs.json
+│
+└── /public
+    └── /feeds
+        ├── google.xml
+        ├── bing.xml
+        └── facebook.xml
+      npm install koa koa-router koa-bodyparser dotenv bcrypt stripe openai axios express node-cron shopify-api-node
+node main.js
