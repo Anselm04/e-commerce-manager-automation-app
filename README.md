@@ -2688,3 +2688,34 @@ app.listen(PORT, () => {
         └── facebook.xml
       npm install koa koa-router koa-bodyparser dotenv bcrypt stripe openai axios express node-cron shopify-api-node
 node main.js
+1 0 * * * cd /path/to/your/project && /usr/bin/node main.js >> /var/log/shopatonestop.log 2>&1
+name = "The Complete Dropshipping Automation App"
+version = "1"
+app_url = "https://yourdomain.com"
+embedded = true
+
+[oauth]
+scopes = "read_products, write_products, read_orders, write_orders, read_script_tags, write_script_tags"
+
+[ui]
+primary = true
+<!DOCTYPE html>
+<html>
+<head>
+  <title>App</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <script src="https://unpkg.com/@shopify/app-bridge"></script>
+</head>
+<body style="margin:0;padding:0;">
+  <iframe src="https://yourdomain.com/dashboard" width="100%" height="100%" frameborder="0"></iframe>
+</body>
+</html>
+render.yaml
+services:
+  - type: web
+    name: title 
+    env: node
+    buildCommand: npm install
+    startCommand: node main.js
+   
