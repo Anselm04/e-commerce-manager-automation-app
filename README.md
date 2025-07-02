@@ -1701,3 +1701,92 @@ for (const product of products) {
   console.log(`✅ Uploaded: ${product.title} to ${category} with SEO/AEO`);
 }
 OPENAI_API_KEY=sk-...
+const { generateSEOKeywords } = require('./agent-seo');
+async function postMultilingual(product, video_url) {
+  const caption = await generateSmartCaption(product);
+  const seoTags = await generateSEOKeywords(product);
+  const searchTags = `\\n\\n🔎 Keywords: ${seoTags.slice(0, 10).join(", ")}`;
+  const fullCaption = `${caption}${searchTags}`;
+
+  const languages = ['en', 'es', 'fr', 'de', 'zh'];
+  const translations = await Promise.all(
+    languages.map(lang => translatePost(fullCaption, lang))
+  );
+
+  for (const text of translations) {
+    await Promise.all([
+      postToFacebook(text, product.image),
+      postToInstagram(product.image, text),
+      postToThreads(text, product.image),
+      postToTikTok(video_url, text),
+      postToYouTube(video_url, product.title, text),
+      postToLinkedIn(text, product.image),
+      postToReddit(product.title, product.image),
+      postToPinterest(product.title, product.image, "https://yourstore.com/products/" + product.id),
+      postToDiscord(text, product.image)
+    ]);
+  }
+}
+function generateSchema(product) {
+  return `
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org/",
+    "@type": "Product",
+    "name": "${product.title}",
+    "image": ["${product.image}"],
+    "description": "${product.description.replace(/"/g, '\\"')}",
+    "sku": "${product.sku}",
+    "brand": {
+      "@type": "Organization",
+      "name": "${product.supplier}"
+    },
+    "offers": {
+      "@type": "Offer",
+      "url": "https://yourstore.com/products/${product.id}",
+      "priceCurrency": "NZD",
+      "price": "${product.price}",
+      "availability": "https://schema.org/InStock"
+    }
+  }
+  </script>
+  `;
+}
+const schemaMarkup = generateSchema(product);
+product.description += `\\n\\n${schemaMarkup}`;
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:g="http://base.google.com/ns/1.0" version="2.0">
+  <channel>
+    <title>Your Store Name</title>
+    <link>https://yourstore.com</link>
+    <description>Full inventory feed for Google Merchant Center</description>
+
+    {% for product in collections.all.products %}
+    <item>
+      <g:id>{{ product.id }}</g:id>
+      <g:title>{{ product.title | escape }}</g:title>
+      <g:description>{{ product.description | strip_html | escape }}</g:description>
+      <g:link>{{ shop.url }}/products/{{ product.handle }}</g:link>
+      <g:image_link>{{ product.featured_image.src | img_url: 'master' }}</g:image_link>
+      <g:availability>in stock</g:availability>
+      <g:price>{{ product.variants.first.price | money_without_currency }} NZD</g:price>
+      <g:brand>{{ product.vendor }}</g:brand>
+      <g:condition>new</g:condition>
+    </item>
+    {% endfor %}
+  </channel>
+</rss>
+https://yourstore.com/google-merchant-feed
+{% if product %}
+  <meta property="og:type" content="product">
+  <meta property="og:title" content="{{ product.title }}">
+  <meta property="og:description" content="{{ product.description | strip_html | truncate: 200 }}">
+  <meta property="og:image" content="{{ product.featured_image | img_url: 'master' }}">
+  <meta property="og:url" content="{{ shop.url }}/products/{{ product.handle }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ product.title }}">
+  <meta name="twitter:description" content="{{ product.description | strip_html | truncate: 200 }}">
+  <meta name="twitter:image" content="{{ product.featured_image | img_url: 'master' }}">
+{% endif %}
+const metaKeywords = aiTags.join(", ");
+product.description += `<meta name="keywords" content="${metaKeywords}">`;
