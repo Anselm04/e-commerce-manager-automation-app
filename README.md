@@ -335,3 +335,75 @@ async function processOrder(order) {
 // - Shopify: "shopify_payments"
 // - Buy Now Pay Later: "afterpay", "klarna", etc.
 // - Crypto: "coinbase", "bitpay", etc.
+module.exports = function detectSupplier(item) {
+  // You can expand this logic to use product tags, vendors, or SKU prefixes
+  const sku = item.sku.toLowerCase();
+
+  if (sku.startsWith("cj-") || item.vendor === "CJdropshipping") {
+    return "cj";
+  }
+
+  if (sku.startsWith("zd-") || item.vendor === "Zendrop") {
+    return "zendrop";
+  }
+
+  if (sku.startsWith("sp-") || item.vendor === "Spocket") {
+    return "spocket";
+  }
+
+  if (sku.startsWith("al-") || item.vendor === "Alibaba") {
+    return "alibaba";
+  }
+
+  return "unknown"; // fallback or error
+};
+const detectSupplier = require('./lib/supplierRouter');
+
+async function processOrder(order) {
+  const groupedItems = {};
+
+  for (const item of order.line_items) {
+    const supplier = detectSupplier(item);
+
+    if (!groupedItems[supplier]) groupedItems[supplier] = [];
+    groupedItems[supplier].push({
+      sku: item.sku || item.variant_sku || item.variant_id.toString(),
+      quantity: item.quantity
+    });
+  }
+
+  let totalCJCost = 0;
+  let totalSupplierCost = 0;
+
+  // Handle each supplier individually
+  for (const [supplier, items] of Object.entries(groupedItems)) {
+    switch (supplier) {
+      case 'cj':
+        const cjPricing = await getCJPrice(items);
+        totalCJCost += cjPricing.totalCost;
+        await payCJviaPayPal(cjPricing.totalCost);
+        break;
+
+      case 'zendrop':
+        // Placeholder for future Zendrop integration
+        console.log(`[Jarvis] Zendrop supplier logic coming soon...`);
+        break;
+
+      case 'spocket':
+        console.log(`[Jarvis] Spocket support not yet active`);
+        break;
+
+      case 'alibaba':
+        console.log(`[Jarvis] Alibaba supplier logic reserved for enterprise orders`);
+        break;
+
+      default:
+        console.warn(`Unknown supplier for item(s):`, items);
+    }
+  }
+
+  const profit = parseFloat(order.total_price) - totalCJCost;
+  await payoutProfitStripe(profit);
+
+  console.log(`Order ${order.id}: Total supplier cost $${totalCJCost}, profit $${profit}`);
+}
