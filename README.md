@@ -1790,3 +1790,50 @@ https://yourstore.com/google-merchant-feed
 {% endif %}
 const metaKeywords = aiTags.join(", ");
 product.description += `<meta name="keywords" content="${metaKeywords}">`;
+/bing-shopping-feed.liquid
+<rss xmlns:g="http://schemas.microsoft.com/ads/2009/06/catalog" version="2.0">
+<rss version="2.0">
+  <channel>
+    <title>Your Store</title>
+    <link>https://yourstore.com</link>
+    <description>Meta Catalog</description>
+    {% for product in collections.all.products %}
+    <item>
+      <id>{{ product.id }}</id>
+      <title>{{ product.title | escape }}</title>
+      <description>{{ product.description | strip_html | escape }}</description>
+      <availability>in stock</availability>
+      <condition>new</condition>
+      <price>{{ product.variants.first.price | money_without_currency }} NZD</price>
+      <link>{{ shop.url }}/products/{{ product.handle }}</link>
+      <image_link>{{ product.featured_image.src | img_url: 'master' }}</image_link>
+      <brand>{{ product.vendor }}</brand>
+    </item>
+    {% endfor %}
+  </channel>
+</rss>
+app.post('/webhooks/products/create', async (req, res) => {
+  const product = req.body;
+
+  // Trigger keyword generation + AEO
+  const seoTags = await generateSEOKeywords(product);
+  product.tags = seoTags;
+
+  // Upload to Google/Bing/Meta feed queue
+  await uploadToShopify(product, categorizeProduct(product));
+
+  res.status(200).send('✅ Product sync complete.');
+});
+POST /admin/api/2023-07/webhooks.json
+📂 /jarvis-commerce-sync
+├── server.js
+├── routes/
+│   ├── /products/create (webhook handler)
+│   ├── /feeds/google
+│   ├── /feeds/bing
+│   └── /feeds/facebook
+├── /scripts/
+│   ├── generateSEOKeywords.js
+│   ├── categorizeProduct.js
+│   └── uploadToShopify.js
+└── .env
