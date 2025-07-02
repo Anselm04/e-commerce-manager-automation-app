@@ -3428,3 +3428,32 @@ function MetricCard({ label, value, color }) {
 }
 
 export default AnalyticsModule;
+const requireMaster = (ctx, next) => {
+  const key = ctx.headers['x-master-key'];
+  if (key !== process.env.MASTER_OVERRIDE_KEY) {
+    ctx.status = 403;
+    ctx.body = { error: '🔒 Restricted to Commander only.' };
+    return;
+  }
+  return next();
+};
+router.get('/admin/analytics', requireMaster, async (ctx) => {
+  // Subscription metrics logic here
+});
+{userRole === 'master' && <AnalyticsModule />}
+useEffect(() => {
+  const fetch = async () => {
+    try {
+      const res = await axios.get('/admin/analytics', {
+        headers: { 'x-master-key': process.env.REACT_APP_ADMIN_KEY }
+      });
+      setMetrics(res.data);
+    } catch (err) {
+      console.log('Not authorized for analytics');
+    }
+  };
+  fetch();
+}, []);
+MASTER_OVERRIDE_KEY=YourSuperSecretPasswordHere
+# Encrypted and hidden from public view
+MASTER_OVERRIDE_KEY=your-secret-commander-code
