@@ -2980,3 +2980,216 @@ REACT_APP_ADMIN_KEY=your_master_key
 NOTIFY_EMAIL=your_notify_email@gmail.com
 NOTIFY_PASS=your_app_password
 ADMIN_EMAIL=you@yourdomain.com
+npm install posthog-node
+const { PostHog } = require("posthog-node");
+const posthog = new PostHog(process.env.POSTHOG_API_KEY, {
+  host: 'https://app.posthog.com'
+});
+
+function trackSignup(email, store) {
+  posthog.capture({
+    distinctId: email,
+    event: 'user_signed_up',
+    properties: { store }
+  });
+}
+
+function trackSubscriptionCancel(email) {
+  posthog.capture({
+    distinctId: email,
+    event: 'subscription_cancelled'
+  });
+}
+
+function trackLogin(email) {
+  posthog.capture({
+    distinctId: email,
+    event: 'user_logged_in'
+  });
+}
+
+module.exports = { trackSignup, trackSubscriptionCancel, trackLogin };
+const Router = require('koa-router');
+const db = require('../db');
+const router = new Router();
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+router.post('/webhook', async (ctx) => {
+  const sig = ctx.request.headers['stripe-signature'];
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(ctx.req.rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    ctx.status = 400;
+    ctx.body = `Webhook Error: ${err.message}`;
+    return;
+  }
+
+  const email = event.data.object.customer_email || 'unknown';
+
+  switch (event.type) {
+    case 'invoice.payment_failed':
+      await db.query('UPDATE users SET is_suspended = true WHERE email = $1', [email]);
+      notifyDiscord(`⚠️ Subscription FAILED for: ${email}`);
+      break;
+
+    case 'invoice.payment_succeeded':
+      await db.query('UPDATE users SET is_suspended = false WHERE email = $1', [email]);
+      notifyDiscord(`✅ Subscription RESUMED for: ${email}`);
+      break;
+  }
+
+  ctx.status = 200;
+});
+router.use(async (ctx, next) => {
+  const session = ctx.session.userSession;
+  const res = await db.query('SELECT is_suspended FROM users WHERE shopify_store = $1', [session.shop]);
+  if (res.rows[0].is_suspended) {
+    ctx.status = 403;
+    ctx.body = { error: '🔒 Subscription inactive. Please update billing.' };
+    return;
+  }
+  await next();
+});
+const axios = require('axios');
+
+const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
+
+function notifyDiscord(message) {
+  return axios.post(WEBHOOK_URL, {
+    content: message
+  });
+}
+
+module.exports = { notifyDiscord };
+POSTHOG_API_KEY=phc_your_key
+STRIPE_WEBHOOK_SECRET=whsec_***
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/****
+import { useEffect, useState } from 'react';
+import Chart from 'chart.js/auto';
+import axios from 'axios';
+
+function Dashboard() {
+  const [stats, setStats] = useState(null);
+
+  useEffect(() => {
+    axios.get('/admin/metrics', {
+      headers: { 'x-master-key': process.env.REACT_APP_ADMIN_KEY }
+    }).then(res => setStats(res.data));
+  }, []);
+
+  useEffect(() => {
+    if (!stats) return;
+
+    const ctx = document.getElementById('userChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: stats.dates,
+        datasets: [{
+          label: 'New Users',
+          data: stats.userCounts,
+          borderColor: '#4F46E5',
+          fill: false
+        }]
+      }
+    });
+
+    const ctx2 = document.getElementById('revenueChart').getContext('2d');
+    new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels: stats.dates,
+        datasets: [{
+          label: 'Revenue (USD)',
+          data: stats.revenue,
+          backgroundColor: '#10B981'
+        }]
+      }
+    });
+  }, [stats]);
+
+  return (
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">📊 Analytics Dashboard</h1>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <canvas id="userChart" width="400" height="200"></canvas>
+        <canvas id="revenueChart" width="400" height="200"></canvas>
+      </div>
+    </div>
+  );
+}
+
+export default Dashboard;
+router.get('/metrics', async (ctx) => {
+  const master = ctx.headers['x-master-key'];
+  if (master !== process.env.MASTER_OVERRIDE_KEY) return ctx.status = 403;
+
+  const users = await db.query(`
+    SELECT DATE(created_at) AS date, COUNT(*) AS count
+    FROM users
+    GROUP BY date
+    ORDER BY date DESC LIMIT 14
+  `);
+
+  const revenue = await db.query(`
+    SELECT DATE(created_at) AS date, SUM(amount) AS total
+    FROM stripe_transactions
+    GROUP BY date
+    ORDER BY date DESC LIMIT 14
+  `);
+
+  ctx.body = {
+    dates: users.rows.map(r => r.date),
+    userCounts: users.rows.map(r => r.count),
+    revenue: revenue.rows.map(r => parseFloat(r.total || 0).toFixed(2))
+  };
+});
+npm install node-cron
+const cron = require('node-cron');
+const db = require('./db');
+const { notifyDiscord } = require('./services/discord');
+
+cron.schedule('0 4 * * *', async () => {
+  const unpaid = await db.query(`
+    SELECT email FROM users
+    WHERE is_suspended = false AND NOT EXISTS (
+      SELECT 1 FROM stripe_transactions WHERE stripe_transactions.user_email = users.email
+      AND created_at > now() - interval '30 days'
+    )
+  `);
+
+  for (let user of unpaid.rows) {
+    await db.query('UPDATE users SET is_suspended = true WHERE email = $1', [user.email]);
+    await notifyDiscord(`🔒 Daily suspension: ${user.email}`);
+  }
+
+  console.log(`✅ Cron ran: ${unpaid.rows.length} accounts suspended.`);
+});
+npm install twilio
+const twilio = require('twilio');
+const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_TOKEN);
+
+const vipEmails = ['vip1@example.com', 'vip2@example.com'];
+
+function sendVIPChurnAlert(email) {
+  if (!vipEmails.includes(email)) return;
+
+  return client.messages.create({
+    to: process.env.ADMIN_PHONE,
+    from: process.env.TWILIO_PHONE,
+    body: `⚠️ ALERT: VIP ${email} cancelled or failed payment.`
+  });
+}
+
+module.exports = { sendVIPChurnAlert };
+case 'customer.subscription.deleted':
+case 'invoice.payment_failed':
+  await sendVIPChurnAlert(email);
+  break;
+REACT_APP_ADMIN_KEY=your_master_key
+TWILIO_SID=ACxxxxxxxxxxxxxxxx
+TWILIO_TOKEN=xxxxxxxxxxxxxxxx
+TWILIO_PHONE=+12223334444
+ADMIN_PHONE=+64211234567
