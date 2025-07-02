@@ -2241,3 +2241,134 @@ router.post('/admin', async (ctx) => {
     document.getElementById("admin-badge").style.display = "block";
   }
 </script>
+require('dotenv').config();
+const Koa = require('koa');
+const Router = require('koa-router');
+const bodyParser = require('koa-bodyparser');
+const adminRoutes = require('./routes/admin');
+const billingRoutes = require('./routes/billing');
+
+const app = new Koa();
+const router = new Router();
+
+app.use(bodyParser());
+router.use('/admin', adminRoutes.routes());
+router.use('/billing', billingRoutes.routes());
+
+app.use(router.routes()).use(router.allowedMethods());
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`✅ App running on port ${PORT}`);
+});
+PORT=3000
+MASTER_HASH=$2b$10$5c47vF3KHyDPSnXZhNziL..b6XOblPgq3xeWvcZB15RAcAGj9OkRq
+STRIPE_SECRET_KEY=sk_live_your_key_here
+SHOPIFY_API_KEY=your_api_key_here
+SHOPIFY_API_SECRET=your_api_secret_here
+const Router = require('koa-router');
+const bcrypt = require('bcrypt');
+const router = new Router();
+
+router.get('/', async (ctx) => {
+  ctx.body = `
+    <html>
+    <head>
+      <title>🔐 Admin Portal</title>
+      <style>
+        body { background: radial-gradient(#222, #000); color: white; text-align: center; padding-top: 15%; font-family: sans-serif; }
+        .card {
+          background: rgba(255,255,255,0.05); padding: 30px; border-radius: 15px;
+          display: inline-block; box-shadow: 0 0 10px rgba(0,255,0,0.3); animation: glow 2s infinite;
+        }
+        input { padding: 10px; width: 250px; border: none; border-radius: 5px; margin-top: 15px; }
+        button {
+          margin-top: 20px; padding: 10px 20px; background: #0f0; color: black;
+          font-weight: bold; border: none; border-radius: 5px; cursor: pointer;
+        }
+        a { color: #0f0; text-decoration: none; font-size: 12px; display: block; margin-top: 10px; }
+        @keyframes glow {
+          0% { box-shadow: 0 0 5px #0f0; }
+          50% { box-shadow: 0 0 20px #0f0; }
+          100% { box-shadow: 0 0 5px #0f0; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h2>🔒 Enter Admin Access Code</h2>
+        <form method="POST" action="/admin">
+          <input name="code" type="password" placeholder="Enter secret code" /><br/>
+          <button type="submit">Unlock</button>
+        </form>
+        <a href="/">⬅ Back to App</a>
+      </div>
+    </body>
+    </html>
+  `;
+});
+
+router.post('/', async (ctx) => {
+  const data = await new Promise(resolve => {
+    let body = '';
+    ctx.req.on('data', chunk => body += chunk);
+    ctx.req.on('end', () => resolve(Object.fromEntries(new URLSearchParams(body))));
+  });
+
+  const isValid = await bcrypt.compare(data.code, process.env.MASTER_HASH);
+  if (isValid) {
+    ctx.cookies.set('master', data.code, { httpOnly: true });
+    ctx.redirect('/?admin=1');
+  } else {
+    ctx.body = `<p style="color:red;text-align:center;">❌ Incorrect code</p><script>setTimeout(()=>{location.href='/admin'},2000)</script>`;
+  }
+});
+
+module.exports = router;
+const Router = require('koa-router');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const bcrypt = require('bcrypt');
+const router = new Router();
+
+async function requireSubscription(ctx, next) {
+  const submittedCode = ctx.headers['x-master-code'] || ctx.cookies.get('master');
+  const isValid = submittedCode 
+    ? await bcrypt.compare(submittedCode, process.env.MASTER_HASH)
+    : false;
+
+  if (isValid) return next();
+
+  const tier = ctx.session?.tier || 'free';
+  if (tier === 'free') return next();
+
+  const subscription = await stripe.subscriptions.retrieve(ctx.session.subId);
+  if (subscription.status !== 'active') ctx.throw(402, 'Payment Required');
+
+  return next();
+}
+
+router.get('/check', requireSubscription, async (ctx) => {
+  ctx.body = { message: "Access granted" };
+});
+
+module.exports = router;
+<div id="admin-badge" style="position:fixed;top:10px;right:10px;z-index:9999;display:none;">
+  <span style="padding:5px 10px;background:linear-gradient(90deg,#0f0,#4caf50);color:white;
+  border-radius:5px;font-weight:bold;box-shadow:0 0 8px #0f0;animation: pulse 1.5s infinite;">
+    ADMIN MODE
+    <button onclick="logoutAdmin()" style="margin-left:10px;background:black;color:#0f0;
+    border:none;padding:2px 6px;border-radius:4px;cursor:pointer;font-size:10px;">
+      Logout
+    </button>
+  </span>
+</div>
+
+<script>
+function logoutAdmin() {
+  document.cookie = "master=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+  location.reload();
+}
+if (document.cookie.includes("master=")) {
+  document.getElementById("admin-badge").style.display = "block";
+}
+</script>
