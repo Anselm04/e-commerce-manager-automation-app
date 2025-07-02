@@ -1263,3 +1263,167 @@ PORT=3000
 npm install axios express dotenv
 POST https://your-domain.com/webhook/product-created
 
+// YouTube Shorts Auto-Uploader (Mock)
+// Replace with YouTube Data API v3 for real deployment
+
+async function postToYouTube(video_url, title, description) {
+  console.log("[🎬 YouTube] Uploading video...");
+  console.log("Title:", title);
+  console.log("Description:", description);
+  console.log("Video URL:", video_url);
+  return { status: "uploaded", platform: "YouTube" };
+}
+
+module.exports = { postToYouTube };
+// LinkedIn API Post (Mock)
+// Use LinkedIn OAuth2 and /ugcPosts endpoint for real posts
+
+async function postToLinkedIn(text, image_url) {
+  console.log("[💼 LinkedIn] Posting update...");
+  console.log("Text:", text);
+  console.log("Image:", image_url);
+  return { status: "posted", platform: "LinkedIn" };
+}
+
+module.exports = { postToLinkedIn };
+// Threads (Meta) Poster via Instagram proxy (Mock)
+
+async function postToThreads(text, image_url) {
+  console.log("[🧵 Threads] Posting content via Instagram API...");
+  console.log("Caption:", text);
+  console.log("Image:", image_url);
+  return { status: "posted", platform: "Threads" };
+}
+
+module.exports = { postToThreads };
+// Reddit Poster (Mock)
+// Use Reddit's API with OAuth2 or snoowrap for real integration
+
+async function postToReddit(title, url) {
+  console.log("[👽 Reddit] Submitting post...");
+  console.log("Title:", title);
+  console.log("URL:", url);
+  return { status: "posted", platform: "Reddit" };
+}
+
+module.exports = { postToReddit };
+// Pinterest API Pin Poster (Mock)
+// Use Pinterest Developer API for real pin creation
+
+async function postToPinterest(title, image_url, link) {
+  console.log("[📌 Pinterest] Creating new pin...");
+  console.log("Title:", title);
+  console.log("Image:", image_url);
+  console.log("Link:", link);
+  return { status: "pinned", platform: "Pinterest" };
+}
+
+module.exports = { postToPinterest };
+// Discord Poster via Webhook
+
+const axios = require('axios');
+
+async function postToDiscord(text, image_url) {
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+
+  await axios.post(webhookUrl, {
+    content: text,
+    embeds: [{
+      image: { url: image_url }
+    }]
+  });
+
+  console.log("[🎮 Discord] Message sent successfully.");
+  return { status: "posted", platform: "Discord" };
+}
+
+module.exports = { postToDiscord };
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+YOUTUBE_API_KEY=your-youtube-key
+LINKEDIN_ACCESS_TOKEN=your-linkedin-token
+REDDIT_CLIENT_ID=...
+REDDIT_CLIENT_SECRET=...
+REDDIT_USERNAME=...
+REDDIT_PASSWORD=...
+PINTEREST_ACCESS_TOKEN=...
+const {
+  generateSmartCaption
+} = require('./agent-captions');
+const {
+  generatePromoVideo
+} = require('./agent-video');
+const {
+  translatePost
+} = require('./agent-translate');
+const {
+  postToFacebook,
+  postToTikTok
+} = require('./agent-posting');
+const {
+  postToInstagram
+} = require('./agent-instagram');
+const {
+  postToThreads
+} = require('./agent-threads');
+const {
+  postToYouTube
+} = require('./agent-youtube');
+const {
+  postToLinkedIn
+} = require('./agent-linkedin');
+const {
+  postToReddit
+} = require('./agent-reddit');
+const {
+  postToPinterest
+} = require('./agent-pinterest');
+const {
+  postToDiscord
+} = require('./agent-discord');
+
+const schedule = require('node-schedule');
+
+const product = {
+  title: "AI-Powered Home Massage Gun",
+  description: "Powerful, deep tissue, intelligent percussive therapy device with 6 speeds and 4 heads.",
+  category: "Wellness",
+  image: "https://yourcdn.com/products/massage-gun.jpg"
+};
+
+const scheduleTimes = [
+  "09:00", "10:30", "12:00", "13:30", "15:00",
+  "16:30", "18:00", "19:30", "21:00", "22:30"
+];
+
+function scheduleJarvisSwarm() {
+  scheduleTimes.forEach((timeStr, index) => {
+    const [hour, minute] = timeStr.split(":").map(Number);
+
+    schedule.scheduleJob({ hour, minute }, async () => {
+      console.log(`\n[⏰ ${timeStr}] Jarvis AI Swarm Activated`);
+
+      const caption = await generateSmartCaption(product);
+      const translated = await translatePost(caption, "es");
+      const promo = generatePromoVideo(product, translated);
+
+      await Promise.all([
+        postToFacebook(translated, product.image),
+        postToInstagram(product.image, translated),
+        postToThreads(translated, product.image),
+        postToTikTok(promo.video_url, translated),
+        postToYouTube(promo.video_url, product.title, translated),
+        postToLinkedIn(translated, product.image),
+        postToReddit(product.title, product.image),
+        postToPinterest(product.title, product.image, "https://yourstore.com/products/massage-gun"),
+        postToDiscord(translated, product.image)
+      ]);
+
+      console.log("[✅ All Platforms Posted]");
+    });
+  });
+
+  console.log("[🚀 Jarvis Unified Swarm Scheduler Deployed]");
+}
+
+scheduleJarvisSwarm();
+node jarvis-unified-swarm-scheduler.js
