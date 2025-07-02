@@ -2079,3 +2079,165 @@ router.post('/admin', async (ctx) => {
 });
 const submittedCode = ctx.headers['x-master-code'] || ctx.cookies.get('master');
 <a href="/admin" style="opacity:0.3;font-size:10px;">🔒 Admin Access</a>
+<div id="admin-badge" style="position:fixed;top:10px;right:10px;z-index:9999;display:none;">
+  <span style="padding:5px 10px;background:linear-gradient(90deg,#0f0,#4caf50);color:white;
+  border-radius:5px;font-weight:bold;box-shadow:0 0 8px #0f0;animation: pulse 1.5s infinite;">
+    ADMIN MODE
+  </span>
+</div>
+
+<style>
+@keyframes pulse {
+  0% { box-shadow: 0 0 5px #0f0; }
+  50% { box-shadow: 0 0 15px #0f0; }
+  100% { box-shadow: 0 0 5px #0f0; }
+}
+</style>
+
+<script>
+  if (document.cookie.includes("master=JarvisOverlord999")) {
+    document.getElementById("admin-badge").style.display = "block";
+  }
+</script>
+<html>
+<head>
+  <title>🔐 Admin Unlock</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: radial-gradient(#222, #000);
+      color: white;
+      text-align: center;
+      padding-top: 15%;
+    }
+    .card {
+      background: rgba(255,255,255,0.05);
+      padding: 30px;
+      border-radius: 15px;
+      display: inline-block;
+      box-shadow: 0 0 10px rgba(0,255,0,0.3);
+      animation: glow 2s infinite;
+    }
+    input {
+      padding: 10px;
+      border-radius: 5px;
+      border: none;
+      width: 250px;
+      margin-bottom: 15px;
+    }
+    button {
+      padding: 10px 20px;
+      background: #00ff00;
+      color: black;
+      border: none;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    @keyframes glow {
+      0% { box-shadow: 0 0 5px #0f0; }
+      50% { box-shadow: 0 0 20px #0f0; }
+      100% { box-shadow: 0 0 5px #0f0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>🔒 ADMIN PORTAL</h2>
+    <form method="POST" action="/admin">
+      <input type="password" name="code" placeholder="Enter secret God Code"/><br/>
+      <button type="submit">Unlock</button>
+    </form>
+  </div>
+</body>
+</html>
+ctx.cookies.set('master', body.code, { httpOnly: true });
+ctx.redirect('/?admin=1');
+<script>
+if (new URLSearchParams(window.location.search).get("admin") === "1") {
+  document.getElementById("admin-badge").style.display = "block";
+}
+</script>
+const bcrypt = require('bcrypt');
+
+router.get('/admin', async (ctx) => {
+  ctx.body = `
+    <html>
+    <head>
+      <title>🔐 Admin Portal</title>
+      <style>
+        body { background: radial-gradient(#222, #000); color: white; text-align: center; padding-top: 15%; font-family: sans-serif; }
+        .card {
+          background: rgba(255,255,255,0.05); padding: 30px; border-radius: 15px;
+          display: inline-block; box-shadow: 0 0 10px rgba(0,255,0,0.3); animation: glow 2s infinite;
+        }
+        input { padding: 10px; width: 250px; border: none; border-radius: 5px; margin-top: 15px; }
+        button {
+          margin-top: 20px; padding: 10px 20px; background: #0f0; color: black;
+          font-weight: bold; border: none; border-radius: 5px; cursor: pointer;
+        }
+        a { color: #0f0; text-decoration: none; font-size: 12px; display: block; margin-top: 10px; }
+        @keyframes glow {
+          0% { box-shadow: 0 0 5px #0f0; }
+          50% { box-shadow: 0 0 20px #0f0; }
+          100% { box-shadow: 0 0 5px #0f0; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h2>🔒 Enter Admin Access Code</h2>
+        <form method="POST" action="/admin">
+          <input name="code" type="password" placeholder="Enter secret code" /><br/>
+          <button type="submit">Unlock</button>
+        </form>
+        <a href="/">⬅ Back to App</a>
+      </div>
+    </body>
+    </html>
+  `;
+});
+
+router.post('/admin', async (ctx) => {
+  const data = await new Promise(resolve => {
+    let body = '';
+    ctx.req.on('data', chunk => body += chunk);
+    ctx.req.on('end', () => resolve(Object.fromEntries(new URLSearchParams(body))));
+  });
+
+  const isValid = await bcrypt.compare(data.code, process.env.MASTER_HASH);
+  if (isValid) {
+    ctx.cookies.set('master', data.code, { httpOnly: true });
+    ctx.redirect('/?admin=1');
+  } else {
+    ctx.body = `<p style="color:red;text-align:center;">❌ Incorrect code</p><script>setTimeout(()=>{location.href='/admin'},2000)</script>`;
+  }
+});
+<div id="admin-badge" style="position:fixed;top:10px;right:10px;z-index:9999;display:none;">
+  <span style="padding:5px 10px;background:linear-gradient(90deg,#0f0,#4caf50);color:white;
+  border-radius:5px;font-weight:bold;box-shadow:0 0 8px #0f0;animation: pulse 1.5s infinite;">
+    ADMIN MODE
+    <button onclick="logoutAdmin()" style="margin-left:10px;background:black;color:#0f0;
+    border:none;padding:2px 6px;border-radius:4px;cursor:pointer;font-size:10px;">
+      Logout
+    </button>
+  </span>
+</div>
+
+<style>
+@keyframes pulse {
+  0% { box-shadow: 0 0 5px #0f0; }
+  50% { box-shadow: 0 0 15px #0f0; }
+  100% { box-shadow: 0 0 5px #0f0; }
+}
+</style>
+
+<script>
+  function logoutAdmin() {
+    document.cookie = "master=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    location.reload();
+  }
+  if (document.cookie.includes("master=JarvisOverlord999")) {
+    document.getElementById("admin-badge").style.display = "block";
+  }
+</script>
