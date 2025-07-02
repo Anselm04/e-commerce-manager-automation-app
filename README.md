@@ -3193,3 +3193,180 @@ TWILIO_SID=ACxxxxxxxxxxxxxxxx
 TWILIO_TOKEN=xxxxxxxxxxxxxxxx
 TWILIO_PHONE=+12223334444
 ADMIN_PHONE=+64211234567
+ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'viewer';
+function requireRole(role) {
+  return async (ctx, next) => {
+    const session = ctx.session.userSession;
+    const res = await db.query('SELECT role FROM users WHERE email = $1', [session.email]);
+    if (!res.rows.length || res.rows[0].role !== role) {
+      ctx.status = 403;
+      ctx.body = { error: '❌ Access Denied' };
+      return;
+    }
+    await next();
+  };
+}
+router.post('/admin/delete-user', requireRole('admin'), async (ctx) => {
+  // Only admins can delete
+});
+router.post('/send-receipt', requireRole('admin'), async (ctx) => {
+  const { customerId, invoiceId } = ctx.request.body;
+  const invoice = await stripe.invoices.retrieve(invoiceId, { expand: ['customer'] });
+
+  await stripe.invoices.sendInvoice(invoice.id);
+  ctx.body = { message: '🧾 Receipt sent to ' + invoice.customer.email };
+});
+function calculateHealth(user) {
+  let score = 100;
+
+  if (!user.last_login || new Date(user.last_login) < Date.now() - 14 * 86400000) score -= 20;
+  if (user.posts_published === 0) score -= 20;
+  if (user.failed_payments > 0) score -= 30;
+  if (user.support_tickets > 2) score -= 10;
+
+  return Math.max(0, score); // range 0–100
+}
+cron.schedule('0 6 * * *', async () => {
+  const users = await db.query('SELECT * FROM users');
+
+  for (let user of users.rows) {
+    const score = calculateHealth(user);
+    if (score < 50) {
+      notifyDiscord(`🚨 Low Health Score: ${user.email} = ${score}`);
+      sendLowScoreEmail(user.email, score);
+    }
+  }
+});
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import './styles.css';
+
+function AdminPanel() {
+  const [users, setUsers] = useState([]);
+
+  useEffect(() => {
+    fetchUsers();
+    const interval = setInterval(fetchUsers, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchUsers = async () => {
+    const res = await axios.get('/admin/users', {
+      headers: { 'x-master-key': process.env.REACT_APP_ADMIN_KEY }
+    });
+    setUsers(res.data);
+  };
+
+  const colorCode = (score) => {
+    if (score >= 90) return 'green';
+    if (score >= 70) return 'yellow';
+    if (score >= 40) return 'orange';
+    return 'red';
+  };
+
+  return (
+    <div className="p-8 bg-gray-100 min-h-screen">
+      <h1 className="text-4xl font-bold mb-4">🧠 Admin Command Console</h1>
+      <table className="table-auto w-full bg-white shadow-xl rounded-lg overflow-hidden">
+        <thead>
+          <tr className="bg-gray-200 text-left">
+            <th className="p-3">Email</th>
+            <th>Role</th>
+            <th>Store</th>
+            <th>Status</th>
+            <th>Health</th>
+            <th>Joined</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map(u => (
+            <tr key={u.id} className="border-b hover:bg-gray-50 transition">
+              <td className="p-3">{u.email}</td>
+              <td>{u.role}</td>
+              <td>{u.shopify_store}</td>
+              <td>
+                {u.is_suspended ? '🔒 Suspended' : '✅ Active'}
+              </td>
+              <td className={`font-bold text-${colorCode(u.health_score)}-500`}>
+                {u.health_score}
+              </td>
+              <td>{new Date(u.created_at).toLocaleDateString()}</td>
+              <td className="space-x-2">
+                <button className="bg-blue-500 text-white px-2 py-1 rounded">Upgrade</button>
+                <button className="bg-yellow-500 text-white px-2 py-1 rounded">Suspend</button>
+                <button className="bg-red-600 text-white px-2 py-1 rounded">Delete</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default AdminPanel;
+router.get('/admin/users', async (ctx) => {
+  const key = ctx.headers['x-master-key'];
+  if (key !== process.env.MASTER_OVERRIDE_KEY) return ctx.status = 403;
+
+  const res = await db.query(`
+    SELECT id, email, shopify_store, role, is_suspended, created_at,
+           last_login, posts_published, failed_payments, support_tickets
+    FROM users
+  `);
+
+  const enhanced = res.rows.map(u => ({
+    ...u,
+    health_score: calculateHealth(u)
+  }));
+
+  ctx.body = enhanced;
+});
+.text-green-500 { color: #10B981; }
+.text-yellow-500 { color: #F59E0B; }
+.text-orange-500 { color: #F97316; }
+.text-red-500 { color: #EF4444; }
+POST /admin/suspend-user
+POST /admin/promote-user
+POST /admin/delete-user
+requireRole('admin')
+<a
+  href={`https://app.posthog.com/person/${u.email}`}
+  target="_blank"
+  rel="noreferrer"
+  className="text-sm text-blue-700 underline ml-2"
+>
+  Session
+</a>
+const adminSessions = new Set();
+
+router.post('/admin/login', async (ctx) => {
+  const { code } = ctx.request.body;
+  if (code !== process.env.MASTER_OVERRIDE_KEY) {
+    ctx.status = 403;
+    ctx.body = { error: '❌ Invalid Code' };
+    return;
+  }
+  adminSessions.add(ctx.sessionID);
+  ctx.body = { success: true };
+});
+
+function requireMaster(ctx, next) {
+  if (!adminSessions.has(ctx.sessionID)) {
+    ctx.status = 403;
+    ctx.body = { error: '🔒 Admin session not authorized' };
+    return;
+  }
+  return next();
+}
+CREATE TABLE admin_logs (
+  id SERIAL PRIMARY KEY,
+  email TEXT,
+  action TEXT,
+  timestamp TIMESTAMP DEFAULT NOW()
+);
+await db.query(
+  'INSERT INTO admin_logs (email, action) VALUES ($1, $2)',
+  [ctx.session.email, 'Suspended user X']
+);
