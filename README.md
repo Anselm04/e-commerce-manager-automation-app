@@ -815,3 +815,228 @@ module.exports.createProduct = async function (product) {
   );
   return response.data.product;
 };
+/**
+ * Jarvis Universal Product Importer – Single File Version
+ * Automatically pulls catalogs, categorizes, and uploads to Shopify
+ */
+
+const axios = require('axios');
+require('dotenv').config();
+
+// === Categorization Logic ===
+function categorizeProduct(product) {
+  const title = product.name.toLowerCase();
+
+  if (title.includes("hoodie")) return { category: "Apparel", subcategory: "Hoodies", tags: ["fashion"] };
+  if (title.includes("shirt")) return { category: "Apparel", subcategory: "Shirts", tags: ["clothing", "casual"] };
+  if (title.includes("mug")) return { category: "Home & Kitchen", subcategory: "Drinkware", tags: ["kitchen", "coffee"] };
+  if (title.includes("jewelry") || title.includes("necklace")) return { category: "Accessories", subcategory: "Jewelry", tags: ["style"] };
+
+  return { category: "Miscellaneous", subcategory: "Other", tags: ["general"] };
+}
+
+// === Shopify Upload Function ===
+async function createShopifyProduct(product) {
+  const res = await axios.post(
+    `https://${process.env.SHOPIFY_STORE}/admin/api/2023-01/products.json`,
+    { product },
+    {
+      headers: {
+        "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+  return res.data.product;
+}
+
+// === CJdropshipping Catalog Fetch ===
+async function fetchCJCatalog() {
+  const res = await axios.get("https://api.cjdropshipping.com/products", {
+    headers: {
+      "Authorization": `Bearer ${process.env.CJ_API_KEY}`
+    }
+  });
+
+  return res.data.products.map(p => ({
+    name: p.title,
+    description: p.description,
+    sku: p.sku,
+    cost: p.cost,
+    stock: p.stock,
+    images: p.images
+  }));
+}
+
+// === Master Import Function ===
+async function importAllProducts() {
+  console.log("[Jarvis] Starting Universal Import...");
+  const products = await fetchCJCatalog();
+
+  for (const product of products) {
+    const { category, subcategory, tags } = categorizeProduct(product);
+
+    const shopifyProduct = {
+      title: product.name,
+      body_html: product.description,
+      vendor: "CJdropshipping",
+      product_type: category,
+      tags: [...tags, subcategory],
+      variants: [
+        {
+          price: (product.cost * 1.5).toFixed(2),
+          sku: product.sku,
+          inventory_quantity: product.stock,
+          inventory_management: "shopify"
+        }
+      ],
+      images: product.images.map(img => ({ src: img }))
+    };
+
+    try {
+      await createShopifyProduct(shopifyProduct);
+      console.log(`[✅ Uploaded] ${product.name}`);
+    } catch (err) {
+      console.error(`[❌ Error] ${product.name} — ${err.message}`);
+    }
+  }
+
+  console.log("[Jarvis] Import Complete.");
+}
+
+// === Execute ===
+importAllProducts();
+SHOPIFY_STORE=your-store-name.myshopify.com
+SHOPIFY_ADMIN_TOKEN=your_shopify_admin_token
+CJ_API_KEY=your_cj_api_key
+npm install axios dotenv
+node jarvis-importer.js
+/**
+ * Jarvis Universal Multi-Supplier Importer – Future-Ready Global Dropshipping Engine
+ * Supports CJdropshipping and extensible to any dropshipping supplier worldwide
+ */
+
+const axios = require('axios');
+require('dotenv').config();
+
+// === Categorization Engine ===
+function categorizeProduct(product) {
+  const title = product.name.toLowerCase();
+
+  if (title.includes("hoodie")) return { category: "Apparel", subcategory: "Hoodies", tags: ["fashion"] };
+  if (title.includes("shirt")) return { category: "Apparel", subcategory: "Shirts", tags: ["clothing", "casual"] };
+  if (title.includes("mug")) return { category: "Home & Kitchen", subcategory: "Drinkware", tags: ["kitchen", "coffee"] };
+  if (title.includes("jewelry") || title.includes("necklace")) return { category: "Accessories", subcategory: "Jewelry", tags: ["style"] };
+
+  return { category: "Miscellaneous", subcategory: "Other", tags: ["general"] };
+}
+
+// === Shopify Upload ===
+async function createShopifyProduct(product) {
+  const res = await axios.post(
+    `https://${process.env.SHOPIFY_STORE}/admin/api/2023-01/products.json`,
+    { product },
+    {
+      headers: {
+        "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+  return res.data.product;
+}
+
+// === Supplier Modules ===
+const suppliers = [
+  {
+    name: "CJdropshipping",
+    fetchCatalog: async () => {
+      const res = await axios.get("https://api.cjdropshipping.com/products", {
+        headers: { "Authorization": `Bearer ${process.env.CJ_API_KEY}` }
+      });
+
+      return res.data.products.map(p => ({
+        name: p.title,
+        description: p.description,
+        sku: p.sku,
+        cost: p.cost,
+        stock: p.stock,
+        images: p.images
+      }));
+    }
+  },
+
+  {
+    name: "Zendrop",
+    fetchCatalog: async () => {
+      console.log("[Jarvis] Zendrop support coming soon...");
+      return [];
+    }
+  },
+
+  {
+    name: "Spocket",
+    fetchCatalog: async () => {
+      console.log("[Jarvis] Spocket support coming soon...");
+      return [];
+    }
+  },
+
+  {
+    name: "Alibaba",
+    fetchCatalog: async () => {
+      console.log("[Jarvis] Alibaba support reserved for verified B2B accounts...");
+      return [];
+    }
+  }
+];
+
+// === Main Import Engine ===
+async function importAllProducts() {
+  console.log("\\n[Jarvis] Initiating multi-supplier product import...");
+
+  for (const supplier of suppliers) {
+    try {
+      console.log(`\\n→ Fetching catalog from ${supplier.name}...`);
+      const products = await supplier.fetchCatalog();
+
+      for (const product of products) {
+        const { category, subcategory, tags } = categorizeProduct(product);
+
+        const shopifyProduct = {
+          title: product.name,
+          body_html: product.description,
+          vendor: supplier.name,
+          product_type: category,
+          tags: [...tags, subcategory],
+          variants: [
+            {
+              price: (product.cost * 1.5).toFixed(2),
+              sku: product.sku,
+              inventory_quantity: product.stock,
+              inventory_management: "shopify"
+            }
+          ],
+          images: product.images.map(img => ({ src: img }))
+        };
+
+        try {
+          await createShopifyProduct(shopifyProduct);
+          console.log(`[✅ Uploaded] ${product.name}`);
+        } catch (err) {
+          console.error(`[❌ Shopify Error] ${product.name} — ${err.message}`);
+        }
+      }
+    } catch (e) {
+      console.error(`[❌ Failed to fetch from ${supplier.name}]`, e.message);
+    }
+  }
+
+  console.log("\\n[Jarvis] Multi-supplier import complete.");
+}
+
+importAllProducts();
+SHOPIFY_STORE=yourstore.myshopify.com
+SHOPIFY_ADMIN_TOKEN=your-shopify-admin-token
+CJ_API_KEY=your-cj-api-token
+
