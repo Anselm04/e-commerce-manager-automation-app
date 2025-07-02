@@ -1837,3 +1837,181 @@ POST /admin/api/2023-07/webhooks.json
 │   ├── categorizeProduct.js
 │   └── uploadToShopify.js
 └── .env
+complete-drop-ship-app/
+├─ .env.example
+├─ package.json
+├─ server.js
+├─ /webhooks.js
+├─ /oauth.js
+├─ /shopify.js
+├─ /feeds.js
+├─ /billing.js
+├─ /ai/
+│   ├─ agent-categorizer.js
+│   ├─ agent-seo.js
+│   ├─ agent-caption.js
+│   ├─ agent-translate.js
+│   └─ agent-social.js
+└─ /scheduler.js
+{
+  "name": "complete-drop-ship-automation",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "schedule": "node scheduler.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "node-schedule": "^2.1.0",
+    "openai": "^4.5.0",
+    "stripe": "^12.0.0",
+    "@shopify/koa-shopify-auth": "*",
+    "@shopify/koa-shopify-webhooks": "*",
+    "koa": "^2.14.1",
+    "koa-router": "^12.0.0",
+    "koa-session": "^6.1.0"
+  }
+}
+SHOPIFY_API_KEY=your_shopify_api_key
+SHOPIFY_API_SECRET=your_shopify_secret
+SHOPIFY_SCOPES=read_products,write_products,read_content,write_content
+SHOPIFY_APP_URL=https://your-app-url.com
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+OPENAI_API_KEY=sk-...
+METAFIELD_NAMESPACE=custom
+require('dotenv').config();
+const Koa = require('koa'), Router = require('koa-router'), session = require('koa-session');
+const shopifyAuth = require('@shopify/koa-shopify-auth').default;
+const { default: createShopifyAuth } = require('@shopify/koa-shopify-auth');
+const { receiveWebhook } = require('@shopify/koa-shopify-webhooks');
+const billing = require('./billing');
+const webhooks = require('./webhooks');
+const feeds = require('./feeds');
+
+const app = new Koa();
+const router = new Router();
+app.keys = [process.env.SHOPIFY_API_SECRET];
+app.use(session(app));
+
+app.use(createShopifyAuth({
+  apiKey: process.env.SHOPIFY_API_KEY,
+  secret: process.env.SHOPIFY_API_SECRET,
+  scopes: process.env.SHOPIFY_SCOPES.split(","),
+  afterAuth: async (ctx) => {
+    const { shop, accessToken } = ctx.session;
+    // Register webhooks
+    await webhooks.registerProductWebhooks(shop, accessToken);
+    // Save shop info to database (optional)
+    ctx.redirect('/');
+  }
+}));
+
+const webhook = receiveWebhook({ secret: process.env.SHOPIFY_API_SECRET });
+router.post('/webhooks/products/create', webhook, async (ctx) => {
+  await webhooks.handleProductCreate(ctx.request.body);
+  ctx.status = 200;
+});
+router.post('/webhooks/products/update', webhook, async (ctx) => {
+  await webhooks.handleProductCreate(ctx.request.body);
+  ctx.status = 200;
+});
+
+router.get('/feeds/google', async (ctx) => feeds.google(ctx));
+router.get('/feeds/bing', async (ctx) => feeds.bing(ctx));
+router.get('/feeds/meta', async (ctx) => feeds.meta(ctx));
+router.get('/feeds/tiktok', async (ctx) => feeds.tiktok(ctx));
+router.get('/feeds/pinterest', async (ctx) => feeds.pinterest(ctx));
+
+app.use(router.routes());
+app.use(router.allowedMethods());
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`⚙️ App running on port ${PORT}`));
+const shopify = require('./shopify');
+const ai = require('./ai/agent-seo');
+const categorizer = require('./ai/agent-categorizer');
+
+async function registerProductWebhooks(shop, token) {
+  await shopify.registerWebhook(shop, token, 'products/create', '/webhooks/products/create');
+  await shopify.registerWebhook(shop, token, 'products/update', '/webhooks/products/update');
+}
+async function handleProductCreate(product) {
+  const category = categorizer.categorizeProduct(product);
+  const seoTags = await ai.generateSEOKeywords({ title: product.title, description: product.body_html });
+  await shopify.updateProductMetadata(product.id, category, seoTags);
+}
+module.exports = { registerProductWebhooks, handleProductCreate };
+const axios = require('axios');
+const Shopify = require('koa-shopify-graphql-proxy');
+
+async function registerWebhook(shop, token, topic, path) {
+  await axios.post(`https://${shop}/admin/api/2023-07/webhooks.json`, {
+    webhook: { topic, address: process.env.SHOPIFY_APP_URL + path, format: 'json' }
+  }, { headers: { "X-Shopify-Access-Token": token }});
+}
+async function updateProductMetadata(productId, collectionTitle, seoTags) {
+  const url = `https://${shop}/admin/api/2023-07/products/${productId}.json`;
+  await axios.put(url, {
+    product: {
+      id: productId,
+      tags: seoTags,
+      metafields: [{
+        namespace: process.env.METAFIELD_NAMESPACE,
+        key: 'collection',
+        value: collectionTitle,
+        type: 'single_line_text_field'
+      }]
+    }
+  }, { headers: { "X-Shopify-Access-Token": token } });
+}
+module.exports = { registerWebhook, updateProductMetadata };
+const liquid = require('liquidjs')();
+const fs = require('fs');
+async function renderTemplate(name, ctx) {
+  const tpl = fs.readFileSync(__dirname + `/templates/${name}.liquid`, 'utf8');
+  return liquid.parseAndRender(tpl, ctx);
+}
+module.exports = {
+  google: async ctx => ctx.body = await renderTemplate('google-merchant-feed', ctx),
+  bing: async ctx => ctx.body = await renderTemplate('bing-shopping-feed', ctx),
+  meta: async ctx => ctx.body = await renderTemplate('facebook-catalog-feed', ctx),
+  tiktok: async ctx => { /* future */}
+  pinterest: async ctx => { /* future */}
+};
+const Stripe = require('stripe');
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+const plans = {
+  pro: 'price_123abc',       // from Stripe Dashboard
+  elite: 'price_456def'
+};
+
+async function requireSubscription(ctx, next) {
+  const tier = ctx.session.tier;
+  if (tier === 'free') return next();
+  const subscription = await stripe.subscriptions.retrieve(ctx.session.subId);
+  if (subscription.status !== 'active') ctx.throw(402, 'Payment Required');
+  return next();
+}
+module.exports = { stripe, plans, requireSubscription };
+const schedule = require('node-schedule');
+const shopifyProducts = require('./shopify').fetchAllProducts;
+const ai = require('./ai/agent-caption');
+const social = require('./ai/agent-social');
+const translate = require('./ai/agent-translate');
+
+schedule.scheduleJob('0 8 * * *', async () => {
+  const products = await shopifyProducts();
+  for (const p of products) {
+    const caption = await ai.generateSmartCaption(p);
+    const langs = ['en','es','fr'];
+    for (const lang of langs) {
+      const text = await translate.translatePost(caption, lang);
+      await social.postToAll(p, text);
+    }
+  }
+});
