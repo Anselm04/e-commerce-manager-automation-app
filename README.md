@@ -2046,3 +2046,36 @@ async function requireSubscription(ctx, next) {
 }
 
 module.exports = { stripe, plans, requireSubscription };
+router.get('/admin', async (ctx) => {
+  ctx.body = `
+    <html>
+      <body>
+        <h2>🔒 Enter Admin Access Code</h2>
+        <form method="POST" action="/admin">
+          <input name="code" type="password" placeholder="Enter code" />
+          <button type="submit">Unlock</button>
+        </form>
+      </body>
+    </html>
+  `;
+});
+
+router.post('/admin', async (ctx) => {
+  const body = await new Promise((resolve) => {
+    let data = '';
+    ctx.req.on('data', (chunk) => (data += chunk));
+    ctx.req.on('end', () => resolve(Object.fromEntries(new URLSearchParams(data))));
+  });
+
+  const bcrypt = require('bcrypt');
+  const isValid = await bcrypt.compare(body.code, process.env.MASTER_HASH);
+
+  if (isValid) {
+    ctx.cookies.set('master', body.code, { httpOnly: true });
+    ctx.redirect('/');
+  } else {
+    ctx.body = '❌ Incorrect Code. <a href="/admin">Try Again</a>';
+  }
+});
+const submittedCode = ctx.headers['x-master-code'] || ctx.cookies.get('master');
+<a href="/admin" style="opacity:0.3;font-size:10px;">🔒 Admin Access</a>
