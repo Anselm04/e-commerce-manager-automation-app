@@ -2718,4 +2718,162 @@ services:
     env: node
     buildCommand: npm install
     startCommand: node main.js
-   
+   const Router = require('koa-router');
+const router = new Router();
+
+router.post('/init', async (ctx) => {
+  const {
+    shopifyStoreName,
+    shopifyAdminToken,
+    cjApiKey,
+    openaiApiKey,
+    fbAccessToken,
+    stripeApiKey,
+  } = ctx.request.body;
+
+  // ⚠️ Save securely - this is where you'd insert DB encryption or secure env storage
+  const session = {
+    shop: shopifyStoreName,
+    token: shopifyAdminToken,
+    cj: cjApiKey,
+    ai: openaiApiKey,
+    fb: fbAccessToken,
+    stripe: stripeApiKey
+  };
+
+  ctx.session.userSession = session;
+  ctx.body = { success: true, message: "Session initialized." };
+});
+async function syncProducts(session) {
+  const shopify = new ShopifyAPI({
+    shopName: session.shop,
+    password: session.token,
+    apiKey: process.env.SHOPIFY_API_KEY // still static for app authentication
+  });
+
+  const { data } = await axios.get(`https://${session.shop}.myshopify.com/admin/api/2023-10/products.json`, {
+    headers: { "X-Shopify-Access-Token": session.token }
+  });
+
+  // Continue using session variables like session.cj, session.ai, etc.
+}
+app.get("/sync-now", async (req, res) => {
+  const session = req.session.userSession;
+  if (!session) return res.status(403).send("⛔ No session found.");
+
+  await syncProducts(session);
+  await generateProductFeeds(session);
+  await postToAllPlatforms(session);
+  res.send("✅ Synced with your Shopify store.");
+});
+<form id="connectForm" method="POST" action="/init">
+  <input type="text" name="shopifyStoreName" placeholder="yourstore.myshopify.com" required />
+  <input type="text" name="shopifyAdminToken" placeholder="Shopify Admin API Token" required />
+  <input type="text" name="cjApiKey" placeholder="CJ Dropshipping API Key" />
+  <input type="text" name="openaiApiKey" placeholder="OpenAI API Key" />
+  <input type="text" name="stripeApiKey" placeholder="Stripe Secret Key" />
+  <input type="text" name="fbAccessToken" placeholder="Facebook Token" />
+  <button type="submit">Connect Store</button>
+</form>
+if (session.masterKey === process.env.MASTER_OVERRIDE_KEY) {
+  // Unlimited access, no rate limits, no billing
+}
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT UNIQUE NOT NULL,
+  shopify_store TEXT UNIQUE NOT NULL,
+  shopify_token TEXT NOT NULL,
+  cj_key TEXT,
+  openai_key TEXT,
+  fb_token TEXT,
+  stripe_key TEXT,
+  is_admin BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+npm install pg
+const { Pool } = require('pg');
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL, // Add this to .env
+  ssl: { rejectUnauthorized: false } // If using Supabase or remote PG
+});
+
+module.exports = {
+  query: (text, params) => pool.query(text, params)
+};
+const Router = require('koa-router');
+const db = require('../db');
+const router = new Router();
+
+router.post('/init', async (ctx) => {
+  const {
+    email,
+    shopifyStore,
+    shopifyToken,
+    cjKey,
+    openaiKey,
+    fbToken,
+    stripeKey
+  } = ctx.request.body;
+
+  const existing = await db.query('SELECT * FROM users WHERE shopify_store = $1', [shopifyStore]);
+  if (existing.rows.length > 0) {
+    return ctx.body = { success: false, message: 'Store already registered.' };
+  }
+
+  await db.query(`
+    INSERT INTO users (email, shopify_store, shopify_token, cj_key, openai_key, fb_token, stripe_key)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+  `, [email, shopifyStore, shopifyToken, cjKey, openaiKey, fbToken, stripeKey]);
+
+  ctx.body = { success: true, message: "✅ Store connected." };
+});
+const Router = require('koa-router');
+const db = require('../db');
+const router = new Router();
+
+router.get('/all-users', async (ctx) => {
+  const master = ctx.headers['x-master-key'];
+  if (master !== process.env.MASTER_OVERRIDE_KEY) {
+    return ctx.status = 403, ctx.body = { error: 'Forbidden' };
+  }
+
+  const result = await db.query('SELECT id, email, shopify_store, created_at FROM users ORDER BY created_at DESC');
+  ctx.body = result.rows;
+});
+npm install stripe
+const Router = require('koa-router');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const db = require('../db');
+const router = new Router();
+
+router.post('/create-checkout-session', async (ctx) => {
+  const { email, store } = ctx.request.body;
+
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ['card'],
+    line_items: [{
+      price: process.env.STRIPE_PRICE_ID, // Set this up in Stripe
+      quantity: 1
+    }],
+    mode: 'subscription',
+    customer_email: email,
+    success_url: `https://yourdomain.com/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `https://yourdomain.com/cancel`
+  });
+
+  await db.query(`UPDATE users SET stripe_key = $1 WHERE shopify_store = $2`, [session.id, store]);
+  ctx.body = { url: session.url };
+});
+
+router.post('/cancel-subscription', async (ctx) => {
+  const { subscriptionId } = ctx.request.body;
+
+  await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+  ctx.body = { message: '🚫 Subscription cancellation scheduled.' };
+});
+DATABASE_URL=postgres://your-db-url
+STRIPE_SECRET_KEY=sk_live_*********
+STRIPE_PRICE_ID=price_**********
+MASTER_OVERRIDE_KEY=YOUR_MASTER_KEY
