@@ -2475,3 +2475,145 @@ SHOPIFY_ADMIN_TOKEN=your_private_admin_token
 SHOPIFY_SHOP_NAME=shopatonestop
 SHOPIFY_API_KEY=your_public_key
 SHOPIFY_API_PASSWORD=your_private_app_password
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+
+const FEED_PATH = path.join(__dirname, '../public/feeds');
+
+async function generateProductFeeds() {
+  const { data } = await axios.get(`https://${process.env.SHOPIFY_SHOP_NAME}.myshopify.com/admin/api/2023-10/products.json`, {
+    headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN }
+  });
+
+  const feedXml = data.products.map(product => `
+    <item>
+      <title>${product.title}</title>
+      <link>https://${process.env.SHOPIFY_SHOP_NAME}.store/products/${product.handle}</link>
+      <description>${product.body_html}</description>
+      <g:price>${product.variants[0].price} USD</g:price>
+      <g:image_link>${product.image.src}</g:image_link>
+      <g:brand>${product.vendor}</g:brand>
+      <g:availability>in stock</g:availability>
+      <g:condition>new</g:condition>
+      <g:mpn>${product.variants[0].sku}</g:mpn>
+    </item>`).join('');
+
+  const fullFeed = `<?xml version="1.0" encoding="UTF-8" ?>
+  <rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
+    <channel>
+      <title>ShopAtOneStop Product Feed</title>
+      <link>https://${process.env.SHOPIFY_SHOP_NAME}.store</link>
+      <description>Automated product feed</description>
+      ${feedXml}
+    </channel>
+  </rss>`;
+
+  fs.writeFileSync(`${FEED_PATH}/google.xml`, fullFeed);
+  fs.writeFileSync(`${FEED_PATH}/bing.xml`, fullFeed);
+  fs.writeFileSync(`${FEED_PATH}/facebook.xml`, fullFeed);
+
+  console.log("✅ Feeds generated: Google, Bing, Meta");
+}
+
+module.exports = { generateProductFeeds };
+const cron = require('node-cron');
+const fs = require('fs');
+const axios = require('axios');
+const { syncProducts } = require('./productSync');
+
+const snapshotPath = './cache/lastProductIDs.json';
+
+async function detectNewShopifyProducts() {
+  const { data } = await axios.get(`https://${process.env.SHOPIFY_SHOP_NAME}.myshopify.com/admin/api/2023-10/products.json`, {
+    headers: { "X-Shopify-Access-Token": process.env.SHOPIFY_ADMIN_TOKEN }
+  });
+
+  const newIDs = data.products.map(p => p.id);
+  const previous = fs.existsSync(snapshotPath)
+    ? JSON.parse(fs.readFileSync(snapshotPath))
+    : [];
+
+  const diff = newIDs.filter(id => !previous.includes(id));
+  if (diff.length > 0) {
+    console.log("🚨 New product(s) detected! Syncing feeds + AI posts...");
+    await syncProducts(); // Refresh Shopify with latest categorization
+    require('./feedGenerator').generateProductFeeds();
+    require('./aiSwarmPoster').postToAllPlatforms();
+  }
+
+  fs.writeFileSync(snapshotPath, JSON.stringify(newIDs));
+}
+
+cron.schedule('*/10 * * * *', detectNewShopifyProducts); // every 10 minutes
+const axios = require('axios');
+
+const GraphAPI = {
+  async postToFacebook(caption, image) {
+    await axios.post(`https://graph.facebook.com/v18.0/${process.env.FB_PAGE_ID}/photos`, {
+      url: image,
+      caption,
+      access_token: process.env.FB_ACCESS_TOKEN
+    });
+  },
+  async postToInstagram(caption, image) {
+    const { data } = await axios.post(`https://graph.facebook.com/v18.0/${process.env.IG_USER_ID}/media`, {
+      image_url: image,
+      caption,
+      access_token: process.env.FB_ACCESS_TOKEN
+    });
+    await axios.post(`https://graph.facebook.com/v18.0/${process.env.IG_USER_ID}/media_publish`, {
+      creation_id: data.id,
+      access_token: process.env.FB_ACCESS_TOKEN
+    });
+  }
+};
+
+const TikTokAPI = {
+  async uploadVideo(videoUrl, caption) {
+    // Placeholder for TikTok upload via API (limited access, require Business app approval)
+    console.log("TikTok upload simulated:", caption, videoUrl);
+  }
+};
+
+module.exports = { GraphAPI, TikTokAPI };
+FB_PAGE_ID=your_facebook_page_id
+FB_ACCESS_TOKEN=your_facebook_graph_token
+IG_USER_ID=your_instagram_user_id
+const axios = require('axios');
+
+async function loadFromSpocket() {
+  const { data } = await axios.get('https://api.spocket.co/v1/products', {
+    headers: { Authorization: `Bearer ${process.env.SPOCKET_API_KEY}` }
+  });
+  return data.products;
+}
+
+async function loadFromSyncee() {
+  const { data } = await axios.get('https://api.syncee.co/products', {
+    headers: { Authorization: `Bearer ${process.env.SYNCEE_API_KEY}` }
+  });
+  return data.products;
+}
+
+async function loadFromPrintful() {
+  const { data } = await axios.get('https://api.printful.com/products', {
+    headers: { Authorization: `Bearer ${process.env.PRINTFUL_API_KEY}` }
+  });
+  return data.result;
+}
+
+async function loadAllSuppliers() {
+  const [spocket, syncee, printful] = await Promise.all([
+    loadFromSpocket(),
+    loadFromSyncee(),
+    loadFromPrintful()
+  ]);
+
+  return [...spocket, ...syncee, ...printful];
+}
+
+module.exports = { loadAllSuppliers };
+SPOCKET_API_KEY=your_spocket_key
+SYNCEE_API_KEY=your_syncee_key
+PRINTFUL_API_KEY=your_printful_key
