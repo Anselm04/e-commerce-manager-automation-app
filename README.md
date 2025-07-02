@@ -294,4 +294,44 @@ PAYPAL_SECRET=your_paypal_secret
 PAYPAL_CJ_ACCOUNT_EMAIL=cj@paypalemail.com
 STRIPE_SECRET_KEY=your_stripe_secret_key
 PORT=3000
+async function processOrder(order) {
+  const items = order.line_items.map(item => ({
+    sku: item.sku || item.variant_sku || item.variant_id.toString(),
+    quantity: item.quantity
+  }));
 
+  // STEP 1: Get real-time CJ price
+  const cjPricing = await getCJPrice(items);
+  const totalCJCost = cjPricing.totalCost;
+
+  // STEP 2: Determine payment method (universal capture)
+  const paymentMethod = order.gateway.toLowerCase(); // e.g. paypal, stripe, shopify_payments, laybuy, klarna, crypto
+
+  console.log(`Payment method used: ${paymentMethod}`);
+
+  // STEP 3: Automatically pay CJ via PayPal
+  await payCJviaPayPal(totalCJCost);
+
+  // STEP 4: Calculate profit
+  const totalPaidByCustomer = parseFloat(order.total_price);
+  const profit = totalPaidByCustomer - totalCJCost;
+
+  // STEP 5: Route profit based on payment method
+  if (paymentMethod.includes("paypal")) {
+    // Funds go to your PayPal → you can manually or automatically transfer to bank
+    console.log("Profit held in PayPal — consider PayPal Payout to bank.");
+  } else {
+    // Most other methods → Shopify sends to Stripe → Stripe handles bank payout
+    await payoutProfitStripe(profit);
+  }
+
+  // STEP 6: Log result
+  console.log(`Order ${order.id} handled. CJ paid: $${totalCJCost}, profit: $${profit}, method: ${paymentMethod}`);
+}
+// Shopify sends the payment method in 'gateway' field
+// Examples:
+// - PayPal: "paypal"
+// - Stripe: "stripe"
+// - Shopify: "shopify_payments"
+// - Buy Now Pay Later: "afterpay", "klarna", etc.
+// - Crypto: "coinbase", "bitpay", etc.
